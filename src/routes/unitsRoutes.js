@@ -1,0 +1,10 @@
+const router = require("express").Router();
+const c = require("../controllers/UnitController");
+const { protect, checkPermission } = require("../middleware/authMiddleware");
+router.use(protect);
+router.post("/", checkPermission("Unit", "canCreate"), c.createUnit);
+router.get("/", checkPermission("Unit", "canView"), c.getAllUnit);
+router.get("/:id", checkPermission("Unit", "canView"), c.getUnitById);
+router.put("/:id", checkPermission("Unit", "canEdit"), c.updateUnit);
+router.delete("/:id", checkPermission("Unit", "canDelete"), c.deleteUnit);
+module.exports = router;

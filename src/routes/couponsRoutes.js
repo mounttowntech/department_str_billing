@@ -1,0 +1,10 @@
+const router = require("express").Router();
+const c = require("../controllers/CouponController");
+const { protect, checkPermission } = require("../middleware/authMiddleware");
+router.use(protect);
+router.post("/", checkPermission("Coupon", "canCreate"), c.createCoupon);
+router.get("/", checkPermission("Coupon", "canView"), c.getAllCoupon);
+router.get("/:id", checkPermission("Coupon", "canView"), c.getCouponById);
+router.put("/:id", checkPermission("Coupon", "canEdit"), c.updateCoupon);
+router.delete("/:id", checkPermission("Coupon", "canDelete"), c.deleteCoupon);
+module.exports = router;
