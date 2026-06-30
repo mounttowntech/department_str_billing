@@ -1,33 +1,13 @@
-const errorMiddleware = (err, req, res, next) => {
-  console.error("ERROR:", err);
-
-  if (err.name === "ValidationError") {
-    return res.status(400).json({
+const ApiError = require("../utils/ApiError");
+exports.notFound = (req, res, next) =>
+  next(new ApiError(`Route not found: ${req.originalUrl}`, 404));
+exports.errorHandler = (err, req, res, next) => {
+  const status = err.statusCode || 500;
+  res
+    .status(status)
+    .json({
       success: false,
-      message: Object.values(err.errors)
-        .map((e) => e.message)
-        .join(", "),
+      message: err.message || "Server Error",
+      ...(process.env.NODE_ENV === "development" ? { stack: err.stack } : {}),
     });
-  }
-
-  if (err.name === "CastError") {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid ID format",
-    });
-  }
-
-  if (err.code === 11000) {
-    return res.status(400).json({
-      success: false,
-      message: `Duplicate field value: ${Object.keys(err.keyValue).join(", ")}`,
-    });
-  }
-
-  res.status(err.statusCode || 500).json({
-    success: false,
-    message: err.message || "Server error",
-  });
 };
-
-module.exports = errorMiddleware;

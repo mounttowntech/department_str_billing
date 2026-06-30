@@ -1,0 +1,10 @@
+const router = require("express").Router();
+const c = require("../controllers/ExpenseController");
+const { protect, checkPermission } = require("../middleware/authMiddleware");
+router.use(protect);
+router.post("/", checkPermission("Expense", "canCreate"), c.createExpense);
+router.get("/", checkPermission("Expense", "canView"), c.getAllExpense);
+router.get("/:id", checkPermission("Expense", "canView"), c.getExpenseById);
+router.put("/:id", checkPermission("Expense", "canEdit"), c.updateExpense);
+router.delete("/:id", checkPermission("Expense", "canDelete"), c.deleteExpense);
+module.exports = router;

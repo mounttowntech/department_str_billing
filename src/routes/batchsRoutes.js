@@ -1,0 +1,10 @@
+const router = require("express").Router();
+const c = require("../controllers/BatchController");
+const { protect, checkPermission } = require("../middleware/authMiddleware");
+router.use(protect);
+router.post("/", checkPermission("Batch", "canCreate"), c.createBatch);
+router.get("/", checkPermission("Batch", "canView"), c.getAllBatch);
+router.get("/:id", checkPermission("Batch", "canView"), c.getBatchById);
+router.put("/:id", checkPermission("Batch", "canEdit"), c.updateBatch);
+router.delete("/:id", checkPermission("Batch", "canDelete"), c.deleteBatch);
+module.exports = router;
