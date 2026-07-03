@@ -1,10 +1,9 @@
 const router = require("express").Router();
 const c = require("../controllers/BrandController");
-const { protect, checkPermission } = require("../middleware/authMiddleware");
-router.use(protect);
-router.post("/", checkPermission("Brand", "canCreate"), c.createBrand);
-router.get("/", checkPermission("Brand", "canView"), c.getAllBrand);
-router.get("/:id", checkPermission("Brand", "canView"), c.getBrandById);
-router.put("/:id", checkPermission("Brand", "canEdit"), c.updateBrand);
-router.delete("/:id", checkPermission("Brand", "canDelete"), c.deleteBrand);
+
+router.post("/create", c.createBrand);
+router.get("/all",  c.getAllBrand);
+router.get("/:id",c.getBrandById);
+router.put("/:id",  c.updateBrand);
+router.delete("/:id",  c.deleteBrand);
 module.exports = router;

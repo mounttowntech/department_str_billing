@@ -1,10 +1,9 @@
 const router = require("express").Router();
 const c = require("../controllers/OfferController");
-const { protect, checkPermission } = require("../middleware/authMiddleware");
-router.use(protect);
-router.post("/", checkPermission("Offer", "canCreate"), c.createOffer);
-router.get("/", checkPermission("Offer", "canView"), c.getAllOffer);
-router.get("/:id", checkPermission("Offer", "canView"), c.getOfferById);
-router.put("/:id", checkPermission("Offer", "canEdit"), c.updateOffer);
-router.delete("/:id", checkPermission("Offer", "canDelete"), c.deleteOffer);
+
+router.post("/create",  c.createOffer);
+router.get("/all",c.getAllOffer);
+router.get("/:id",  c.getOfferById);
+router.put("/:id", c.updateOffer);
+router.delete("/:id",  c.deleteOffer);
 module.exports = router;

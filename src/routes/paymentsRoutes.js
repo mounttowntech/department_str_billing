@@ -1,10 +1,9 @@
 const router = require("express").Router();
 const c = require("../controllers/PaymentController");
-const { protect, checkPermission } = require("../middleware/authMiddleware");
-router.use(protect);
-router.post("/", checkPermission("Payment", "canCreate"), c.createPayment);
-router.get("/", checkPermission("Payment", "canView"), c.getAllPayment);
-router.get("/:id", checkPermission("Payment", "canView"), c.getPaymentById);
-router.put("/:id", checkPermission("Payment", "canEdit"), c.updatePayment);
-router.delete("/:id", checkPermission("Payment", "canDelete"), c.deletePayment);
+
+router.post("/create",  c.createPayment);
+router.get("/all",  c.getAllPayment);
+router.get("/:id", c.getPaymentById);
+router.put("/:id",  c.updatePayment);
+router.delete("/:id",  c.deletePayment);
 module.exports = router;
