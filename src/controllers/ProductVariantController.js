@@ -1,9 +1,122 @@
-const response = require('../utils/responseHandler');
-const success = response.success;
-const asyncHandler = require('../utils/asyncHandler');
-const Model = require('../models/ProductVariant');
-exports.createProductVariant = asyncHandler(async(req,res)=>{ const data=await Model.create({...req.body, createdBy:req.user?._id}); success(res,'ProductVariant created',data,201); });
-exports.getAllProductVariant = asyncHandler(async(req,res)=>{ const filter={}; if(req.query.status) filter.status=req.query.status; if(req.query.store) filter.store=req.query.store; const data=await Model.find(filter).sort({createdAt:-1}); success(res,'ProductVariant list',data); });
-exports.getProductVariantById = asyncHandler(async(req,res)=>{ const data=await Model.findById(req.params.id); if(!data) return res.status(404).json({success:false,message:'ProductVariant not found'}); success(res,'ProductVariant details',data); });
-exports.updateProductVariant = asyncHandler(async(req,res)=>{ const data=await Model.findByIdAndUpdate(req.params.id,{...req.body,updatedBy:req.user?._id},{new:true,runValidators:true}); if(!data) return res.status(404).json({success:false,message:'ProductVariant not found'}); success(res,'ProductVariant updated',data); });
-exports.deleteProductVariant = asyncHandler(async(req,res)=>{ const data=await Model.findByIdAndDelete(req.params.id); if(!data) return res.status(404).json({success:false,message:'ProductVariant not found'}); success(res,'ProductVariant deleted'); });
+const ProductVariant = require("../models/ProductVariant");
+
+exports.createVariant = async (req, res) => {
+  try {
+    const variant = await ProductVariant.create({
+      ...req.body,
+      createdBy: req.user?.id,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Product variant created successfully",
+      data: variant,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getVariants = async (req, res) => {
+  try {
+    const variants = await ProductVariant.find()
+      .populate("store", "storeName storeCode")
+      .populate("product", "productName productCode")
+      .populate("unit", "unitName shortName")
+      .populate("warehouse", "warehouseName")
+      .populate("shelf", "shelfName rackNumber")
+      .sort({ createdAt: -1 });
+
+    res.json({ success: true, data: variants });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getVariantById = async (req, res) => {
+  try {
+    const variant = await ProductVariant.findById(req.params.id);
+
+    if (!variant) {
+      return res.status(404).json({
+        success: false,
+        message: "Variant not found",
+      });
+    }
+
+    res.json({ success: true, data: variant });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.updateVariant = async (req, res) => {
+  try {
+    const variant = await ProductVariant.findByIdAndUpdate(
+      req.params.id,
+      { ...req.body, updatedBy: req.user?.id },
+      { new: true, runValidators: true }
+    );
+
+    res.json({
+      success: true,
+      message: "Variant updated successfully",
+      data: variant,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.deleteVariant = async (req, res) => {
+  try {
+    await ProductVariant.findByIdAndUpdate(req.params.id, {
+      status: "inactive",
+    });
+
+    res.json({
+      success: true,
+      message: "Variant deleted successfully",
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getLowStockVariants = async (req, res) => {
+  try {
+    const variants = await ProductVariant.find();
+
+    const lowStock = variants.filter(
+      (v) => Number(v.currentStock || 0) <= Number(v.minimumStock || 0)
+    );
+
+    res.json({
+      success: true,
+      count: lowStock.length,
+      data: lowStock,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getVariantByBarcode = async (req, res) => {
+  try {
+    const variant = await ProductVariant.findOne({
+      barcode: req.params.barcode,
+      status: "active",
+    });
+
+    if (!variant) {
+      return res.status(404).json({
+        success: false,
+        message: "Variant not found",
+      });
+    }
+
+    res.json({ success: true, data: variant });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

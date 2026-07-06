@@ -1,13 +1,26 @@
 const router = require("express").Router();
-const c = require("../controllers/SupplierController");
 
-router.post("/create", c.createSupplier);
-router.get("/all", c.getAllSupplier);
-router.get("/:id",  c.getSupplierById);
-router.put("/:id",  c.updateSupplier);
-router.delete(
-  "/:id",
-  
-  c.deleteSupplier,
-);
+const {
+  createSupplier,
+  getAllSuppliers,
+  getSupplierById,
+  updateSupplier,
+  deleteSupplier,
+  activateSupplier,
+} = require("../controllers/SupplierController");
+
+const { verifyToken } = require("../middleware/authMiddleware");
+
+router.post("/create", verifyToken, createSupplier);
+
+router.get("/all", verifyToken, getAllSuppliers);
+
+router.get("/:id", verifyToken, getSupplierById);
+
+router.put("/update/:id", verifyToken, updateSupplier);
+
+router.patch("/activate/:id", verifyToken, activateSupplier);
+
+router.delete("/delete/:id", verifyToken, deleteSupplier);
+
 module.exports = router;

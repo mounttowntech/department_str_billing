@@ -1,29 +1,20 @@
-const router = require("express").Router();
-const c = require("../controllers/SalesInvoiceController");
+const express = require("express");
+const router = express.Router();
 
-router.post(
-  "/create",
-  
-  c.createSalesInvoice,
-);
-router.get(
-  "/all",
- 
-  c.getAllSalesInvoice,
-);
-router.get(
-  "/:id",
- 
-  c.getSalesInvoiceById,
-);
-router.put(
-  "/:id",
-  
-  c.updateSalesInvoice,
-);
-router.delete(
-  "/:id",
-  
-  c.deleteSalesInvoice,
-);
+const {
+  createSalesInvoice,
+  getSalesInvoices,
+  getSalesInvoiceById,
+  updateSalesInvoice,
+  deleteSalesInvoice,
+} = require("../controllers/salesInvoiceController");
+
+const { verifyToken } = require("../middleware/authMiddleware");
+
+router.post("/create", verifyToken, createSalesInvoice);
+router.get("/all", verifyToken, getSalesInvoices);
+router.get("/:id", verifyToken, getSalesInvoiceById);
+router.put("/:id", verifyToken, updateSalesInvoice);
+router.delete("/:id", verifyToken, deleteSalesInvoice);
+
 module.exports = router;

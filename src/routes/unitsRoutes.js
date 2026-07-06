@@ -1,9 +1,26 @@
 const router = require("express").Router();
-const c = require("../controllers/UnitController");
 
-router.post("/create",  c.createUnit);
-router.get("/all",  c.getAllUnit);
-router.get("/:id",  c.getUnitById);
-router.put("/:id",  c.updateUnit);
-router.delete("/:id", c.deleteUnit);
+const {
+  createUnit,
+  getAllUnits,
+  getUnitById,
+  updateUnit,
+  deleteUnit,
+  activateUnit,
+} = require("../controllers/unitController");
+
+const { verifyToken } = require("../middleware/authMiddleware");
+
+router.post("/create", verifyToken, createUnit);
+
+router.get("/all", verifyToken, getAllUnits);
+
+router.get("/:id", verifyToken, getUnitById);
+
+router.put("/update/:id", verifyToken, updateUnit);
+
+router.patch("/activate/:id", verifyToken, activateUnit);
+
+router.delete("/delete/:id", verifyToken, deleteUnit);
+
 module.exports = router;

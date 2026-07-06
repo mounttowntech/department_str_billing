@@ -1,9 +1,7 @@
 const router = require("express").Router();
 const c = require("../controllers/StoreController");
 
-router.post("/create", 
-  
-c.createStore);
+router.post("/create", c.createStore);
 router.get("/all", 
     
     c.getAllStore);

@@ -2,36 +2,23 @@ const express = require("express");
 const router = express.Router();
 
 const {
-  register,
-  login,
-  forgotPassword,
-  resetPassword,
-  changePassword,
-  me,
-} = require("../controllers/authController");
+  createUser,
+  getUsers,
+  getUserById,
+  updateUser,
+  deleteUser,
+  blockUser,
+  activateUser,
+} = require("../controllers/userController");
 
-const verifyToken = require("../middleware/authMiddleware");
-// const upload = require("../middleware/upload");
+const { verifyToken } = require("../middleware/authMiddleware");
 
-// Register
-router.post("/register", register);
-
-// If using profile image upload:
-// router.post("/register", upload.single("profileImage"), register);
-
-// Login
-router.post("/login", login);
-
-// Forgot Password
-router.post("/forgot-password", forgotPassword);
-
-// Reset Password
-router.post("/reset-password", resetPassword);
-
-// Change Password
-router.put("/change-password", verifyToken, changePassword);
-
-// Logged-in user details
-router.get("/me", verifyToken, me);
+router.post("/create", verifyToken, createUser);
+router.get("/all", verifyToken, getUsers);
+router.get("/:id", verifyToken, getUserById);
+router.put("/update/:id", verifyToken, updateUser);
+router.patch("/block/:id", verifyToken, blockUser);
+router.patch("/activate/:id", verifyToken, activateUser);
+router.delete("/delete/:id", verifyToken, deleteUser);
 
 module.exports = router;

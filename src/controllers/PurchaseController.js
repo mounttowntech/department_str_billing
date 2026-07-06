@@ -1,10 +1,141 @@
-const Purchase=require('../models/Purchase'); const ProductVariant=require('../models/ProductVariant'); const Batch=require('../models/Batch'); const Payment=require('../models/Payment'); const asyncHandler=require('../utils/asyncHandler'); const {success}=require('../utils/responseHandler'); const generatePurchaseNo=require('../utils/generatePurchaseNo'); const generateBarcode=require('../utils/generateBarcode'); const generatePaymentNo=require('../utils/generatePaymentNo'); const {moveStock}=require('../services/inventoryService');
-exports.createPurchase=asyncHandler(async(req,res)=>{const {supplier,store,warehouse,items=[],paidAmount=0}=req.body; let subTotal=0,gstAmount=0,purchaseItems=[]; const purchaseNo=await generatePurchaseNo(); for(const it of items){const variant=await ProductVariant.findOne({skuCode:it.skuCode}).populate('product'); if(!variant) throw new Error(`Variant not found ${it.skuCode}`); const line=Number(it.purchasePrice)*Number(it.quantity); const gst=line*Number(it.gstPercentage||variant.gstPercentage||0)/100; const total=line+gst; subTotal+=line; gstAmount+=gst; let batch=null; if(it.batchNumber||it.expiryDate){batch=await Batch.create({batchNumber:it.batchNumber||`BAT-${Date.now()}`,barcode:it.batchBarcode||generateBarcode('BAT'),product:variant.product._id,variant:variant._id,supplier,purchase:null,store,warehouse,purchasePrice:it.purchasePrice,sellingPrice:variant.sellingPrice,mrp:variant.mrp,quantity:it.quantity,remainingQuantity:it.quantity,expiryDate:it.expiryDate,createdBy:req.user?._id});}
- await moveStock({variantId:variant._id,batchId:batch?._id,quantity:it.quantity,operation:'purchase',referenceModel:'Purchase',referenceNumber:purchaseNo,store,warehouse,createdBy:req.user?._id,remarks:'Purchase stock in'});
- purchaseItems.push({product:variant.product._id,variant:variant._id,batch:batch?._id,skuCode:variant.skuCode,barcode:variant.barcode,productName:variant.product.productName,quantity:it.quantity,unit:variant.unit,purchasePrice:it.purchasePrice,gstPercentage:it.gstPercentage||variant.gstPercentage,gstAmount:gst,totalAmount:total,expiryDate:it.expiryDate});}
- const grandTotal=subTotal+gstAmount, dueAmount=Math.max(grandTotal-paidAmount,0); const purchase=await Purchase.create({purchaseNo,supplier,store,warehouse,items:purchaseItems,subTotal,gstAmount,grandTotal,paidAmount,dueAmount,paymentStatus:paidAmount>=grandTotal?'paid':paidAmount>0?'partial':'unpaid',createdBy:req.user?._id});
- if(paidAmount>0) await Payment.create({paymentNumber:await generatePaymentNo(),paymentType:'Purchase',paymentMode:req.body.paymentMode||'Cash',purchase:purchase._id,supplier,amount:grandTotal,paidAmount,store,createdBy:req.user?._id}); success(res,'Purchase created',purchase,201);});
-exports.getAllPurchase=asyncHandler(async(req,res)=>success(res,'Purchase list',await Purchase.find().populate('supplier store warehouse').sort({createdAt:-1})));
-exports.getPurchaseById=asyncHandler(async(req,res)=>success(res,'Purchase details',await Purchase.findById(req.params.id).populate('supplier store warehouse items.product items.variant')));
-exports.updatePurchase=asyncHandler(async(req,res)=>success(res,'Purchase updated',await Purchase.findByIdAndUpdate(req.params.id,req.body,{new:true,runValidators:true})));
-exports.deletePurchase=asyncHandler(async(req,res)=>{await Purchase.findByIdAndDelete(req.params.id); success(res,'Purchase deleted');});
+const Purchase = require("../models/Purchase");
+const Product = require("../models/Product");
+const ProductVariant = require("../models/ProductVariant");
+
+exports.createPurchase = async (req, res) => {
+  try {
+    const purchase = await Purchase.create({
+      ...req.body,
+      createdBy: req.user?.id,
+    });
+
+    // stock increase
+    for (const item of purchase.items) {
+      await Product.findByIdAndUpdate(item.product, {
+        $inc: { totalStock: item.quantity },
+      });
+
+      if (item.variant) {
+        await ProductVariant.findByIdAndUpdate(item.variant, {
+          $inc: { currentStock: item.quantity },
+        });
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Purchase created successfully",
+      data: purchase,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getPurchases = async (req, res) => {
+  try {
+    const { store, supplier, paymentStatus, fromDate, toDate } = req.query;
+
+    const filter = {};
+    if (store) filter.store = store;
+    if (supplier) filter.supplier = supplier;
+    if (paymentStatus) filter.paymentStatus = paymentStatus;
+
+    if (fromDate && toDate) {
+      filter.purchaseDate = {
+        $gte: new Date(fromDate),
+        $lte: new Date(toDate),
+      };
+    }
+
+    const purchases = await Purchase.find(filter)
+      .populate("supplier", "supplierName mobile companyName")
+      .populate("store", "storeName storeCode")
+      .populate("warehouse", "warehouseName")
+      .populate("items.product", "productName productCode")
+      .populate("items.variant", "skuCode barcode variantName")
+      .populate("items.unit", "unitName shortName")
+      .sort({ purchaseDate: -1 });
+
+    res.json({
+      success: true,
+      count: purchases.length,
+      data: purchases,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getPurchaseById = async (req, res) => {
+  try {
+    const purchase = await Purchase.findById(req.params.id)
+      .populate("supplier")
+      .populate("store")
+      .populate("warehouse")
+      .populate("items.product")
+      .populate("items.variant")
+      .populate("items.unit");
+
+    if (!purchase) {
+      return res.status(404).json({
+        success: false,
+        message: "Purchase not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: purchase,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.updatePurchase = async (req, res) => {
+  try {
+    const purchase = await Purchase.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    );
+
+    if (!purchase) {
+      return res.status(404).json({
+        success: false,
+        message: "Purchase not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Purchase updated successfully",
+      data: purchase,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.deletePurchase = async (req, res) => {
+  try {
+    const purchase = await Purchase.findById(req.params.id);
+
+    if (!purchase) {
+      return res.status(404).json({
+        success: false,
+        message: "Purchase not found",
+      });
+    }
+
+    await purchase.deleteOne();
+
+    res.json({
+      success: true,
+      message: "Purchase deleted successfully",
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

@@ -1,25 +1,18 @@
-const router = require("express").Router();
-const c = require("../controllers/SalesReturnController");
+const express = require("express");
+const router = express.Router();
 
-router.post(
-  "/create",
-  
-  c.createSalesReturn,
-);
-router.get("/all", c.getAllSalesReturn);
-router.get(
-  "/:id",
-  
-  c.getSalesReturnById,
-);
-router.put(
-  "/:id",
-  
-  c.updateSalesReturn,
-);
-router.delete(
-  "/:id",
-  
-  c.deleteSalesReturn,
-);
+const {
+  createSalesReturn,
+  getSalesReturns,
+  getSalesReturnById,
+  deleteSalesReturn,
+} = require("../controllers/salesReturnController");
+
+const { verifyToken } = require("../middleware/authMiddleware");
+
+router.post("/create", verifyToken, createSalesReturn);
+router.get("/all", verifyToken, getSalesReturns);
+router.get("/:id", verifyToken, getSalesReturnById);
+router.delete("/:id", verifyToken, deleteSalesReturn);
+
 module.exports = router;

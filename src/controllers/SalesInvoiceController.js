@@ -1,9 +1,146 @@
-const SalesInvoice=require('../models/SalesInvoice'); const ProductVariant=require('../models/ProductVariant'); const Payment=require('../models/Payment'); const Customer=require('../models/Customer'); const asyncHandler=require('../utils/asyncHandler'); const {success}=require('../utils/responseHandler'); const generateInvoiceNo=require('../utils/generateInvoiceNo'); const generatePaymentNo=require('../utils/generatePaymentNo'); const {moveStock}=require('../services/inventoryService'); const {applyCoupon,paymentStatus}=require('../services/billingService'); const {earnPoints}=require('../services/loyaltyService');
-exports.createSalesInvoice=asyncHandler(async(req,res)=>{const {customer,store,warehouse,items=[],paidAmount=0,paymentMethod='cash',couponCode}=req.body; let subTotal=0,gstAmount=0,invoiceItems=[]; const invoiceNo=await generateInvoiceNo(); for(const it of items){const variant=await ProductVariant.findOne({$or:[{skuCode:it.skuCode},{barcode:it.barcode}]}).populate('product'); if(!variant) throw new Error('Variant not found'); const line=Number(variant.sellingPrice)*Number(it.quantity); const gst=line*Number(variant.gstPercentage||0)/100; const total=line+gst-Number(it.discount||0); subTotal+=line; gstAmount+=gst; await moveStock({variantId:variant._id,batchId:it.batch,quantity:it.quantity,operation:'sale',referenceModel:'SalesInvoice',referenceNumber:invoiceNo,store,warehouse:warehouse||variant.warehouse,createdBy:req.user?._id,remarks:'Sales stock out'}); invoiceItems.push({product:variant.product._id,variant:variant._id,batch:it.batch,skuCode:variant.skuCode,barcode:variant.barcode,productName:variant.product.productName,unit:variant.unit,packSize:variant.packSize,quantity:it.quantity,price:variant.sellingPrice,discount:it.discount||0,gstPercentage:variant.gstPercentage,gstAmount:gst,totalAmount:total,hsnCode:variant.product.hsnCode});}
- const couponResult=await applyCoupon(couponCode,subTotal); const grandTotal=subTotal+gstAmount-couponResult.discountAmount; const dueAmount=Math.max(grandTotal-paidAmount,0), returnAmount=Math.max(paidAmount-grandTotal,0); let invoice=await SalesInvoice.create({invoiceNo,customer,store,warehouse,items:invoiceItems,coupon:couponResult.coupon?._id,subTotal,gstAmount,discountAmount:couponResult.discountAmount,grandTotal,paidAmount,returnAmount,dueAmount,paymentMethod,paymentStatus:paymentStatus(grandTotal,paidAmount),remarks:req.body.remarks,createdBy:req.user?._id});
- if(paidAmount>0){const p=await Payment.create({paymentNumber:await generatePaymentNo(),paymentType:'Sales',paymentMode:paymentMethod==='upi'?'UPI':paymentMethod==='card'?'Card':'Cash',invoice:invoice._id,customer,amount:grandTotal,paidAmount,store,createdBy:req.user?._id}); invoice.payment=p._id; await invoice.save();}
- await earnPoints({customer,invoice:invoice._id,amount:grandTotal,store,createdBy:req.user?._id}); success(res,'Invoice created',invoice,201);});
-exports.getAllSalesInvoice=asyncHandler(async(req,res)=>success(res,'Invoice list',await SalesInvoice.find().populate('customer store warehouse').sort({createdAt:-1})));
-exports.getSalesInvoiceById=asyncHandler(async(req,res)=>success(res,'Invoice details',await SalesInvoice.findById(req.params.id).populate('customer store warehouse items.product items.variant payment')));
-exports.updateSalesInvoice=asyncHandler(async(req,res)=>success(res,'Invoice updated',await SalesInvoice.findByIdAndUpdate(req.params.id,req.body,{new:true,runValidators:true})));
-exports.deleteSalesInvoice=asyncHandler(async(req,res)=>{await SalesInvoice.findByIdAndDelete(req.params.id); success(res,'Invoice deleted');});
+const SalesInvoice = require("../models/SalesInvoice");
+const Product = require("../models/Product");
+const ProductVariant = require("../models/ProductVariant");
+
+exports.createSalesInvoice = async (req, res) => {
+  try {
+    const invoice = await SalesInvoice.create({
+      ...req.body,
+      createdBy: req.user?.id,
+    });
+
+    // stock decrease after billing
+    for (const item of invoice.items) {
+      await Product.findByIdAndUpdate(item.product, {
+        $inc: { totalStock: -Number(item.quantity || 0) },
+      });
+
+      if (item.variant) {
+        await ProductVariant.findByIdAndUpdate(item.variant, {
+          $inc: { currentStock: -Number(item.quantity || 0) },
+        });
+      }
+    }
+
+    res.status(201).json({
+      success: true,
+      message: "Sales invoice created successfully",
+      data: invoice,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getSalesInvoices = async (req, res) => {
+  try {
+    const { store, customer, paymentStatus, billingType, fromDate, toDate } =
+      req.query;
+
+    const filter = {};
+    if (store) filter.store = store;
+    if (customer) filter.customer = customer;
+    if (paymentStatus) filter.paymentStatus = paymentStatus;
+    if (billingType) filter.billingType = billingType;
+
+    if (fromDate && toDate) {
+      filter.invoiceDate = {
+        $gte: new Date(fromDate),
+        $lte: new Date(toDate),
+      };
+    }
+
+    const invoices = await SalesInvoice.find(filter)
+      .populate("customer", "customerName phone")
+      .populate("store", "storeName storeCode")
+      .populate("warehouse", "warehouseName")
+      .populate("coupon", "couponCode discountValue")
+      .populate("items.product", "productName productCode")
+      .populate("items.variant", "skuCode barcode variantName")
+      .populate("items.unit", "unitName shortName")
+      .sort({ invoiceDate: -1 });
+
+    res.json({
+      success: true,
+      count: invoices.length,
+      data: invoices,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getSalesInvoiceById = async (req, res) => {
+  try {
+    const invoice = await SalesInvoice.findById(req.params.id)
+      .populate("customer")
+      .populate("store")
+      .populate("warehouse")
+      .populate("coupon")
+      .populate("items.product")
+      .populate("items.variant")
+      .populate("items.unit")
+      .populate("payment");
+
+    if (!invoice) {
+      return res.status(404).json({
+        success: false,
+        message: "Sales invoice not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: invoice,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.updateSalesInvoice = async (req, res) => {
+  try {
+    const invoice = await SalesInvoice.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    );
+
+    if (!invoice) {
+      return res.status(404).json({
+        success: false,
+        message: "Sales invoice not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Sales invoice updated successfully",
+      data: invoice,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.deleteSalesInvoice = async (req, res) => {
+  try {
+    const invoice = await SalesInvoice.findById(req.params.id);
+
+    if (!invoice) {
+      return res.status(404).json({
+        success: false,
+        message: "Sales invoice not found",
+      });
+    }
+
+    await invoice.deleteOne();
+
+    res.json({
+      success: true,
+      message: "Sales invoice deleted successfully",
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

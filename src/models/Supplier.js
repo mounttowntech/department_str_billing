@@ -1,60 +1,123 @@
 const mongoose = require("mongoose");
-const addr = new mongoose.Schema(
-  {
-    addressLine1: { type: String, required: true },
-    addressLine2: String,
-    city: { type: String, required: true },
-    district: String,
-    state: { type: String, required: true },
-    country: { type: String, default: "India" },
-    pincode: { type: String, required: true },
-  },
-  { _id: false },
-);
-const bank = new mongoose.Schema(
-  {
-    bankName: String,
-    accountHolderName: String,
-    accountNumber: String,
-    ifscCode: String,
-    branchName: String,
-    upiId: String,
-  },
-  { _id: false },
-);
+
 const schema = new mongoose.Schema(
   {
+    store: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Store",
+      required: true,
+    },
+
     supplierCode: {
       type: String,
       required: true,
-      unique: true,
       uppercase: true,
+      trim: true,
     },
-    supplierName: { type: String, required: true },
-    companyName: { type: String, required: true },
-    contactPerson: String,
-    mobile: { type: String, required: true, unique: true },
-    alternateMobile: String,
-    email: { type: String, lowercase: true },
-    website: String,
-    gstNumber: { type: String, uppercase: true },
-    panNumber: { type: String, uppercase: true },
-    billingAddress: addr,
-    shippingAddress: addr,
-    bankDetails: bank,
-    creditLimit: { type: Number, default: 0 },
-    outstandingBalance: { type: Number, default: 0 },
-    paymentTerms: { type: String, default: "30 Days" },
-    supplierRating: { type: Number, min: 1, max: 5, default: 5 },
-    remarks: String,
+
+    supplierName: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    companyName: {
+      type: String,
+      trim: true,
+    },
+
+    contactPerson: {
+      type: String,
+      trim: true,
+    },
+
+    email: {
+      type: String,
+      lowercase: true,
+      trim: true,
+    },
+
+    phone: {
+      type: String,
+      trim: true,
+    },
+
+    alternatePhone: {
+      type: String,
+      trim: true,
+    },
+
+    gstNumber: {
+      type: String,
+      uppercase: true,
+      trim: true,
+    },
+
+    panNumber: {
+      type: String,
+      uppercase: true,
+      trim: true,
+    },
+
+    address: String,
+    city: String,
+    state: String,
+    country: {
+      type: String,
+      default: "India",
+    },
+    pincode: String,
+
+    bankName: String,
+    accountHolder: String,
+    accountNumber: String,
+    ifscCode: String,
+
+    paymentTerms: {
+      type: Number,
+      default: 0,
+    },
+
+    creditLimit: {
+      type: Number,
+      default: 0,
+    },
+
+    openingBalance: {
+      type: Number,
+      default: 0,
+    },
+
+    currentBalance: {
+      type: Number,
+      default: 0,
+    },
+
+    notes: String,
+
     status: {
       type: String,
-      enum: ["active", "inactive", "blocked"],
+      enum: ["active", "inactive"],
       default: "active",
     },
-    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+
+    updatedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
   },
-  { timestamps: true, versionKey: false },
+  {
+    timestamps: true,
+    versionKey: false,
+  }
 );
+
+schema.index({ store: 1, supplierCode: 1 }, { unique: true });
+schema.index({ store: 1, supplierName: 1 }, { unique: true });
+
 module.exports = mongoose.model("Supplier", schema);

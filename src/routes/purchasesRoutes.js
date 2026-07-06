@@ -1,13 +1,20 @@
-const router = require("express").Router();
-const c = require("../controllers/PurchaseController");
+const express = require("express");
+const router = express.Router();
 
-router.post("/create",  c.createPurchase);
-router.get("/all",c.getAllPurchase);
-router.get("/:id",  c.getPurchaseById);
-router.put("/:id",  c.updatePurchase);
-router.delete(
-  "/:id",
-  
-  c.deletePurchase,
-);
+const {
+  createPurchase,
+  getPurchases,
+  getPurchaseById,
+  updatePurchase,
+  deletePurchase,
+} = require("../controllers/purchaseController");
+
+const { verifyToken } = require("../middleware/authMiddleware");
+
+router.post("/create", verifyToken, createPurchase);
+router.get("/all", verifyToken, getPurchases);
+router.get("/:id", verifyToken, getPurchaseById);
+router.put("/:id", verifyToken, updatePurchase);
+router.delete("/:id", verifyToken, deletePurchase);
+
 module.exports = router;

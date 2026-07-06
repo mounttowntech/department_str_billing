@@ -1,9 +1,22 @@
-const router = require("express").Router();
-const c = require("../controllers/ProductController");
+const express = require("express");
+const router = express.Router();
 
-router.post("/create",  c.createProduct);
-router.get("/all",  c.getAllProduct);
-router.get("/:id",  c.getProductById);
-router.put("/:id", c.updateProduct);
-router.delete("/:id", c.deleteProduct);
+const {
+  createProduct,
+  getProducts,
+  getProductById,
+  updateProduct,
+  deleteProduct,
+  getLowStockProducts,
+} = require("../controllers/ProductController");
+
+const { verifyToken } = require("../middleware/authMiddleware");
+
+router.post("/create", verifyToken, createProduct);
+router.get("/all", verifyToken, getProducts);
+router.get("/low-stock", verifyToken, getLowStockProducts);
+router.get("/:id", verifyToken, getProductById);
+router.put("/:id", verifyToken, updateProduct);
+router.delete("/:id", verifyToken, deleteProduct);
+
 module.exports = router;

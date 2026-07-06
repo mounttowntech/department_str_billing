@@ -1,6 +1,121 @@
-const Model=require('../models/SalesReturn'); const ProductVariant=require('../models/ProductVariant'); const asyncHandler=require('../utils/asyncHandler'); const {success}=require('../utils/responseHandler'); const {moveStock}=require('../services/inventoryService');
-exports.createSalesReturn=asyncHandler(async(req,res)=>{const returnNo=req.body.returnNo||'SR-'+Date.now(); const doc=await Model.create({...req.body,returnNo,createdBy:req.user?._id}); for(const it of req.body.items||[]){const v=await ProductVariant.findOne({skuCode:it.skuCode}); if(v) await moveStock({variantId:v._id,batchId:it.batch,quantity:it.quantity,operation:'sales_return',referenceId:doc._id,referenceModel:'SalesReturn',referenceNumber:returnNo,store:req.body.store,warehouse:req.body.warehouse,createdBy:req.user?._id,remarks:'SalesReturn stock movement'});} success(res,'SalesReturn created',doc,201);});
-exports.getAllSalesReturn=asyncHandler(async(req,res)=>success(res,'SalesReturn list',await Model.find().sort({createdAt:-1})));
-exports.getSalesReturnById=asyncHandler(async(req,res)=>success(res,'SalesReturn details',await Model.findById(req.params.id)));
-exports.updateSalesReturn=asyncHandler(async(req,res)=>success(res,'SalesReturn updated',await Model.findByIdAndUpdate(req.params.id,req.body,{new:true,runValidators:true})));
-exports.deleteSalesReturn=asyncHandler(async(req,res)=>{await Model.findByIdAndDelete(req.params.id); success(res,'SalesReturn deleted');});
+const SalesReturn = require("../models/SalesReturn");
+const SalesInvoice = require("../models/SalesInvoice");
+const Product = require("../models/Product");
+const ProductVariant = require("../models/ProductVariant");
+
+exports.createSalesReturn = async (req, res) => {
+  try {
+    const salesReturn = await SalesReturn.create({
+      ...req.body,
+      createdBy: req.user?.id,
+    });
+
+    // Stock increase after customer return
+    for (const item of salesReturn.items) {
+      await Product.findByIdAndUpdate(item.product, {
+        $inc: { totalStock: Number(item.quantity || 0) },
+      });
+
+      if (item.variant) {
+        await ProductVariant.findByIdAndUpdate(item.variant, {
+          $inc: { currentStock: Number(item.quantity || 0) },
+        });
+      }
+    }
+
+    await SalesInvoice.findByIdAndUpdate(salesReturn.invoice, {
+      returnStatus: "partial",
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Sales return created successfully",
+      data: salesReturn,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getSalesReturns = async (req, res) => {
+  try {
+    const { store, customer, invoice, fromDate, toDate } = req.query;
+
+    const filter = {};
+    if (store) filter.store = store;
+    if (customer) filter.customer = customer;
+    if (invoice) filter.invoice = invoice;
+
+    if (fromDate && toDate) {
+      filter.returnDate = {
+        $gte: new Date(fromDate),
+        $lte: new Date(toDate),
+      };
+    }
+
+    const returns = await SalesReturn.find(filter)
+      .populate("invoice", "invoiceNo grandTotal")
+      .populate("customer", "customerName phone")
+      .populate("store", "storeName storeCode")
+      .populate("warehouse", "warehouseName")
+      .populate("items.product", "productName productCode")
+      .populate("items.variant", "skuCode barcode variantName")
+      .sort({ returnDate: -1 });
+
+    res.json({
+      success: true,
+      count: returns.length,
+      data: returns,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getSalesReturnById = async (req, res) => {
+  try {
+    const salesReturn = await SalesReturn.findById(req.params.id)
+      .populate("invoice")
+      .populate("customer")
+      .populate("store")
+      .populate("warehouse")
+      .populate("items.product")
+      .populate("items.variant");
+
+    if (!salesReturn) {
+      return res.status(404).json({
+        success: false,
+        message: "Sales return not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: salesReturn,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.deleteSalesReturn = async (req, res) => {
+  try {
+    const salesReturn = await SalesReturn.findById(req.params.id);
+
+    if (!salesReturn) {
+      return res.status(404).json({
+        success: false,
+        message: "Sales return not found",
+      });
+    }
+
+    await salesReturn.deleteOne();
+
+    res.json({
+      success: true,
+      message: "Sales return deleted successfully",
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};

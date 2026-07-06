@@ -1,29 +1,24 @@
-const router = require("express").Router();
-const c = require("../controllers/ProductVariantController");
+const express = require("express");
+const router = express.Router();
 
-router.post(
-  "/create",
- 
-  c.createProductVariant,
-);
-router.get(
-  "/all",
-  
-  c.getAllProductVariant,
-);
-router.get(
-  "/:id",
-  
-  c.getProductVariantById,
-);
-router.put(
-  "/:id",
- 
-  c.updateProductVariant,
-);
-router.delete(
-  "/:id",
+const {
+  createVariant,
+  getVariants,
+  getVariantById,
+  updateVariant,
+  deleteVariant,
+  getLowStockVariants,
+  getVariantByBarcode,
+} = require("../controllers/ProductVariantController");
 
-  c.deleteProductVariant,
-);
+const { verifyToken } = require("../middleware/authMiddleware");
+
+router.post("/create", verifyToken, createVariant);
+router.get("/all", verifyToken, getVariants);
+router.get("/low-stock", verifyToken, getLowStockVariants);
+router.get("/barcode/:barcode", verifyToken, getVariantByBarcode);
+router.get("/:id", verifyToken, getVariantById);
+router.put("/:id", verifyToken, updateVariant);
+router.delete("/:id", verifyToken, deleteVariant);
+
 module.exports = router;

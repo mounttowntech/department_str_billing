@@ -1,6 +1,160 @@
-const Product=require('../models/Product'); const ProductVariant=require('../models/ProductVariant'); const Barcode=require('../models/Barcode'); const generateSKU=require('../utils/generateSKU'); const generateBarcode=require('../utils/generateBarcode'); const asyncHandler=require('../utils/asyncHandler'); const {success}=require('../utils/responseHandler');
-exports.createProduct=asyncHandler(async(req,res)=>{const {variants=[],...body}=req.body; const product=await Product.create({...body,createdBy:req.user?._id}); const created=[]; for(const v of variants){const skuCode=v.skuCode||generateSKU({category:body.category?.toString()||'GEN',productName:body.productName,brand:v.brand||'BRD',unit:v.unitName||''}); const barcode=v.barcode||generateBarcode(); const variant=await ProductVariant.create({...v,product:product._id,skuCode,barcode,createdBy:req.user?._id}); await Barcode.create({product:product._id,variant:variant._id,skuCode,barcode,createdBy:req.user?._id}); created.push(variant);} success(res,'Product created',{product,variants:created},201);});
-exports.getAllProduct=asyncHandler(async(req,res)=>{const filter={}; if(req.query.category)filter.category=req.query.category; if(req.query.search)filter.productName={$regex:req.query.search,$options:'i'}; const data=await Product.find(filter).populate('category subCategory brand unit taxSetting').sort({createdAt:-1}); success(res,'Product list',data);});
-exports.getProductById=asyncHandler(async(req,res)=>{const product=await Product.findById(req.params.id).populate('category subCategory brand unit taxSetting'); const variants=await ProductVariant.find({product:req.params.id}); success(res,'Product details',{product,variants});});
-exports.updateProduct=asyncHandler(async(req,res)=>success(res,'Product updated',await Product.findByIdAndUpdate(req.params.id,{...req.body,updatedBy:req.user?._id},{new:true,runValidators:true})));
-exports.deleteProduct=asyncHandler(async(req,res)=>{await Product.findByIdAndDelete(req.params.id); success(res,'Product deleted');});
+const Product = require("../models/Product");
+
+exports.createProduct = async (req, res) => {
+  try {
+    const product = await Product.create({
+      ...req.body,
+      createdBy: req.user?._id || req.user?.id,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Product created successfully",
+      data: product,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getProducts = async (req, res) => {
+  try {
+    const { store, search, category, status, productType } = req.query;
+
+    const filter = {};
+
+    if (store) filter.store = store;
+    if (category) filter.category = category;
+    if (status) filter.status = status;
+    if (productType) filter.productType = productType;
+
+    if (search) {
+      filter.$or = [
+        { productName: { $regex: search, $options: "i" } },
+        { productCode: { $regex: search, $options: "i" } },
+        { hsnCode: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const products = await Product.find(filter)
+      .populate("store", "storeName storeCode")
+      .populate("category", "categoryName")
+      .populate("subCategory", "subCategoryName")
+      .populate("brand", "brandName")
+      .populate("unit", "unitName shortName")
+      .populate("taxSetting", "taxName totalTax")
+      .sort({ createdAt: -1 });
+
+    res.json({
+      success: true,
+      count: products.length,
+      data: products,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getProductById = async (req, res) => {
+  try {
+    const product = await Product.findById(req.params.id)
+      .populate("store", "storeName storeCode")
+      .populate("category", "categoryName")
+      .populate("subCategory", "subCategoryName")
+      .populate("brand", "brandName")
+      .populate("unit", "unitName shortName")
+      .populate("taxSetting", "taxName totalTax");
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: product,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.updateProduct = async (req, res) => {
+  try {
+    const product = await Product.findByIdAndUpdate(
+      req.params.id,
+      {
+        ...req.body,
+        updatedBy: req.user?._id || req.user?.id,
+      },
+      { new: true, runValidators: true }
+    );
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Product updated successfully",
+      data: product,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.deleteProduct = async (req, res) => {
+  try {
+    const product = await Product.findByIdAndUpdate(
+      req.params.id,
+      { status: "inactive", updatedBy: req.user?._id || req.user?.id },
+      { new: true }
+    );
+
+    if (!product) {
+      return res.status(404).json({
+        success: false,
+        message: "Product not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Product deactivated successfully",
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+exports.getLowStockProducts = async (req, res) => {
+  try {
+    const { store } = req.query;
+
+    const filter = {};
+    if (store) filter.store = store;
+
+    const products = await Product.find(filter)
+      .populate("category", "categoryName")
+      .populate("brand", "brandName")
+      .sort({ totalStock: 1 });
+
+    const lowStockProducts = products.filter(
+      (item) => Number(item.totalStock || 0) <= Number(item.minimumStock || 0)
+    );
+
+    res.json({
+      success: true,
+      count: lowStockProducts.length,
+      data: lowStockProducts,
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
