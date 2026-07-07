@@ -1,12 +1,23 @@
 const router = require("express").Router();
-const c = require("../controllers/CustomerController");
 
-router.post("/create",  c.createCustomer);
-router.get("/all",  c.getAllCustomer);
-router.get("/:id", c.getCustomerById);
-router.put("/:id",  c.updateCustomer);
-router.delete(
-  "/:id",
-  c.deleteCustomer,
-);
+const {
+  createCustomer,
+  getAllCustomers,
+  getCustomerById,
+  updateCustomer,
+  deleteCustomer,
+  blockCustomer,
+  activateCustomer,
+} = require("../controllers/CustomerController");
+
+const { verifyToken } = require("../middleware/authMiddleware");
+
+router.post("/create", verifyToken, createCustomer);
+router.get("/all", verifyToken, getAllCustomers);
+router.get("/:id", verifyToken, getCustomerById);
+router.put("/update/:id", verifyToken, updateCustomer);
+router.patch("/block/:id", verifyToken, blockCustomer);
+router.patch("/activate/:id", verifyToken, activateCustomer);
+router.delete("/delete/:id", verifyToken, deleteCustomer);
+
 module.exports = router;
