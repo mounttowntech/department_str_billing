@@ -372,8 +372,8 @@ salesInvoiceSchema.pre("save", function () {
    Virtual
 ========================================== */
 
-salesInvoiceSchema.virtual("invoiceItems").get(function () {
-  return this.items.length;
+salesInvoiceSchema.virtual("itemCount").get(function () {
+    return this.items?.length || 0;
 });
 
 /* ==========================================

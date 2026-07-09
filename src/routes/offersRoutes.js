@@ -1,9 +1,17 @@
 const router = require("express").Router();
-const c = require("../controllers/OfferController");
+const controller = require("../controllers/OfferController");
 
-router.post("/create",  c.createOffer);
-router.get("/all",c.getAllOffer);
-router.get("/:id",  c.getOfferById);
-router.put("/:id", c.updateOffer);
-router.delete("/:id",  c.deleteOffer);
+router.post("/create", controller.createOffer);
+// Apply Offer
+router.post("/applicable", controller.getApplicableOffer);
+router.get("/all", controller.getAllOffer);
+
+router.get("/:id", controller.getOfferById);
+
+router.put("/update/:id", controller.updateOffer);
+
+router.delete("/delete/:id", controller.deleteOffer);
+
+
+
 module.exports = router;

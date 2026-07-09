@@ -30,7 +30,7 @@ app.use("/api/department-categories", require("./src/routes/department-categorys
 app.use("/api/department-sub-categories", require("./src/routes/department-sub-categorysRoutes"));
 app.use("/api/expenses", require("./src/routes/expensesRoutes"));
 app.use("/api/hold-bills", require("./src/routes/hold-billsRoutes"));
-app.use("/api/loyalty-pointss", require("./src/routes/loyalty-pointssRoutes"));
+app.use("/api/loyalty-points", require("./src/routes/loyalty-pointssRoutes"));
 app.use("/api/notifications", require("./src/routes/notificationsRoutes"));
 app.use("/api/offers", require("./src/routes/offersRoutes"));
 app.use("/api/payments", require("./src/routes/paymentsRoutes"));
