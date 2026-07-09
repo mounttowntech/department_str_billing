@@ -1,10 +1,45 @@
-const router = require("express").Router();
-const c = require("../controllers/BatchController");
-const { protect, checkPermission } = require("../middleware/authMiddleware");
-router.use(protect);
-router.post("/", checkPermission("Batch", "canCreate"), c.createBatch);
-router.get("/", checkPermission("Batch", "canView"), c.getAllBatch);
-router.get("/:id", checkPermission("Batch", "canView"), c.getBatchById);
-router.put("/:id", checkPermission("Batch", "canEdit"), c.updateBatch);
-router.delete("/:id", checkPermission("Batch", "canDelete"), c.deleteBatch);
+const express = require("express");
+const router = express.Router();
+
+const {
+  createBatch,
+  getAllBatch,
+  getBatchById,
+  updateBatch,
+  deleteBatch,
+  getExpiredBatch,
+  getLowStockBatch,
+  getBatchByBarcode,
+  getBatchByProduct,
+} = require("../controllers/BatchController");
+
+const { verifyToken } = require("../middleware/authMiddleware");
+
+// Create Batch
+router.post("/create", verifyToken, createBatch);
+
+// Get All Batches
+router.get("/all", verifyToken, getAllBatch);
+
+// Expired Batches
+router.get("/expired", verifyToken, getExpiredBatch);
+
+// Low Stock Batches
+router.get("/low-stock", verifyToken, getLowStockBatch);
+
+// Get Batch by Barcode
+router.get("/barcode/:barcode", verifyToken, getBatchByBarcode);
+
+// Get Product Batches
+router.get("/product/:productId", verifyToken, getBatchByProduct);
+
+// Get Batch by ID
+router.get("/:id", verifyToken, getBatchById);
+
+// Update Batch
+router.put("/update/:id", verifyToken, updateBatch);
+
+// Soft Delete Batch
+router.delete("/delete/:id", verifyToken, deleteBatch);
+
 module.exports = router;

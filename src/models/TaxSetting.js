@@ -36,13 +36,12 @@ const schema = new mongoose.Schema(
   },
   { timestamps: true, versionKey: false },
 );
-schema.pre("save", function (next) {
+schema.pre("save", function () {
   this.totalTax =
     Number(this.cgst || 0) +
     Number(this.sgst || 0) +
     Number(this.igst || 0) +
     Number(this.cess || 0) +
     Number(this.vat || 0);
-  next();
 });
 module.exports = mongoose.model("TaxSetting", schema);

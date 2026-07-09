@@ -1,14 +1,26 @@
 const router = require("express").Router();
-const c = require("../controllers/SupplierController");
-const { protect, checkPermission } = require("../middleware/authMiddleware");
-router.use(protect);
-router.post("/", checkPermission("Supplier", "canCreate"), c.createSupplier);
-router.get("/", checkPermission("Supplier", "canView"), c.getAllSupplier);
-router.get("/:id", checkPermission("Supplier", "canView"), c.getSupplierById);
-router.put("/:id", checkPermission("Supplier", "canEdit"), c.updateSupplier);
-router.delete(
-  "/:id",
-  checkPermission("Supplier", "canDelete"),
-  c.deleteSupplier,
-);
+
+const {
+  createSupplier,
+  getAllSuppliers,
+  getSupplierById,
+  updateSupplier,
+  deleteSupplier,
+  activateSupplier,
+} = require("../controllers/SupplierController");
+
+const { verifyToken } = require("../middleware/authMiddleware");
+
+router.post("/create", verifyToken, createSupplier);
+
+router.get("/all", verifyToken, getAllSuppliers);
+
+router.get("/:id", verifyToken, getSupplierById);
+
+router.put("/update/:id", verifyToken, updateSupplier);
+
+router.patch("/activate/:id", verifyToken, activateSupplier);
+
+router.delete("/delete/:id", verifyToken, deleteSupplier);
+
 module.exports = router;

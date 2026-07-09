@@ -1,9 +1,196 @@
-const response = require('../utils/responseHandler');
-const success = response.success;
-const asyncHandler = require('../utils/asyncHandler');
-const Model = require('../models/Shelf');
-exports.createShelf = asyncHandler(async(req,res)=>{ const data=await Model.create({...req.body, createdBy:req.user?._id}); success(res,'Shelf created',data,201); });
-exports.getAllShelf = asyncHandler(async(req,res)=>{ const filter={}; if(req.query.status) filter.status=req.query.status; if(req.query.store) filter.store=req.query.store; const data=await Model.find(filter).sort({createdAt:-1}); success(res,'Shelf list',data); });
-exports.getShelfById = asyncHandler(async(req,res)=>{ const data=await Model.findById(req.params.id); if(!data) return res.status(404).json({success:false,message:'Shelf not found'}); success(res,'Shelf details',data); });
-exports.updateShelf = asyncHandler(async(req,res)=>{ const data=await Model.findByIdAndUpdate(req.params.id,{...req.body,updatedBy:req.user?._id},{new:true,runValidators:true}); if(!data) return res.status(404).json({success:false,message:'Shelf not found'}); success(res,'Shelf updated',data); });
-exports.deleteShelf = asyncHandler(async(req,res)=>{ const data=await Model.findByIdAndDelete(req.params.id); if(!data) return res.status(404).json({success:false,message:'Shelf not found'}); success(res,'Shelf deleted'); });
+const Shelf = require("../models/Shelf");
+
+exports.createShelf = async (req, res) => {
+  try {
+    const shelf = await Shelf.create({
+      ...req.body,
+      createdBy: req.user?.id,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Shelf created successfully",
+      data: shelf,
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "Shelf code already exists in this store",
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.getAllShelf = async (req, res) => {
+  try {
+    const { store, warehouse, status, storageType, search } = req.query;
+
+    const filter = {};
+
+    if (store) filter.store = store;
+    if (warehouse) filter.warehouse = warehouse;
+    if (status) filter.status = status;
+    if (storageType) filter.storageType = storageType;
+
+    if (search) {
+      filter.$or = [
+        { shelfCode: { $regex: search, $options: "i" } },
+        { shelfName: { $regex: search, $options: "i" } },
+        { rackNumber: { $regex: search, $options: "i" } },
+        { section: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const shelves = await Shelf.find(filter)
+      .populate("store", "storeName storeCode")
+      .populate("warehouse", "warehouseName warehouseCode")
+      .populate("createdBy", "firstName lastName email")
+      .populate("updatedBy", "firstName lastName email")
+      .sort({ shelfName: 1 });
+
+    res.json({
+      success: true,
+      count: shelves.length,
+      data: shelves,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.getShelfById = async (req, res) => {
+  try {
+    const shelf = await Shelf.findById(req.params.id)
+      .populate("store", "storeName storeCode")
+      .populate("warehouse", "warehouseName warehouseCode");
+
+    if (!shelf) {
+      return res.status(404).json({
+        success: false,
+        message: "Shelf not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: shelf,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.updateShelf = async (req, res) => {
+  try {
+    const shelf = await Shelf.findByIdAndUpdate(
+      req.params.id,
+      {
+        ...req.body,
+        updatedBy: req.user?.id,
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    if (!shelf) {
+      return res.status(404).json({
+        success: false,
+        message: "Shelf not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Shelf updated successfully",
+      data: shelf,
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "Shelf code already exists in this store",
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.deleteShelf = async (req, res) => {
+  try {
+    const shelf = await Shelf.findByIdAndUpdate(
+      req.params.id,
+      {
+        status: "inactive",
+        updatedBy: req.user?.id,
+      },
+      { new: true }
+    );
+
+    if (!shelf) {
+      return res.status(404).json({
+        success: false,
+        message: "Shelf not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Shelf deactivated successfully",
+      data: shelf,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.activateShelf = async (req, res) => {
+  try {
+    const shelf = await Shelf.findByIdAndUpdate(
+      req.params.id,
+      {
+        status: "active",
+        updatedBy: req.user?.id,
+      },
+      { new: true }
+    );
+
+    if (!shelf) {
+      return res.status(404).json({
+        success: false,
+        message: "Shelf not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Shelf activated successfully",
+      data: shelf,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};

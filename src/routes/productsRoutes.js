@@ -1,10 +1,23 @@
-const router = require("express").Router();
-const c = require("../controllers/ProductController");
-const { protect, checkPermission } = require("../middleware/authMiddleware");
-router.use(protect);
-router.post("/", checkPermission("Product", "canCreate"), c.createProduct);
-router.get("/", checkPermission("Product", "canView"), c.getAllProduct);
-router.get("/:id", checkPermission("Product", "canView"), c.getProductById);
-router.put("/:id", checkPermission("Product", "canEdit"), c.updateProduct);
-router.delete("/:id", checkPermission("Product", "canDelete"), c.deleteProduct);
+const express = require("express");
+const router = express.Router();
+
+const {
+  createProduct,
+  getProducts,
+  getProductById,
+  updateProduct,
+  deleteProduct,
+  getLowStockProducts,
+  activateProduct
+} = require("../controllers/ProductController");
+
+const { verifyToken } = require("../middleware/authMiddleware");
+
+router.post("/create", verifyToken, createProduct);
+router.get("/all", verifyToken, getProducts);
+router.get("/low-stock", verifyToken, getLowStockProducts);
+router.get("/:id", verifyToken, getProductById);
+router.put("/update/:id", verifyToken, updateProduct);
+router.delete("/delete/:id", verifyToken, deleteProduct);
+router.patch("/activate/:id", verifyToken, activateProduct);
 module.exports = router;

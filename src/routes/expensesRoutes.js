@@ -1,10 +1,29 @@
 const router = require("express").Router();
+
 const c = require("../controllers/ExpenseController");
-const { protect, checkPermission } = require("../middleware/authMiddleware");
-router.use(protect);
-router.post("/", checkPermission("Expense", "canCreate"), c.createExpense);
-router.get("/", checkPermission("Expense", "canView"), c.getAllExpense);
-router.get("/:id", checkPermission("Expense", "canView"), c.getExpenseById);
-router.put("/:id", checkPermission("Expense", "canEdit"), c.updateExpense);
-router.delete("/:id", checkPermission("Expense", "canDelete"), c.deleteExpense);
+
+// Create Expense
+router.post("/create", c.createExpense);
+
+// Get All Expense
+router.get("/all", c.getAllExpense);
+
+// Get Expense By Id
+router.get("/:id", c.getExpenseById);
+
+// Update Expense
+router.put("/update/:id", c.updateExpense);
+
+// Delete Expense (Soft Delete)
+router.delete("/delete/:id", c.deleteExpense);
+
+// Approve Expense
+router.put("/approve/:id", c.approveExpense);
+
+// Reject Expense
+router.put("/reject/:id", c.rejectExpense);
+
+// Expense Summary Report
+router.get("/summary/report", c.getExpenseSummary);
+
 module.exports = router;

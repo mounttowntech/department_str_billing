@@ -1,14 +1,45 @@
-const router = require("express").Router();
-const c = require("../controllers/PurchaseController");
-const { protect, checkPermission } = require("../middleware/authMiddleware");
-router.use(protect);
-router.post("/", checkPermission("Purchase", "canCreate"), c.createPurchase);
-router.get("/", checkPermission("Purchase", "canView"), c.getAllPurchase);
-router.get("/:id", checkPermission("Purchase", "canView"), c.getPurchaseById);
-router.put("/:id", checkPermission("Purchase", "canEdit"), c.updatePurchase);
-router.delete(
-  "/:id",
-  checkPermission("Purchase", "canDelete"),
-  c.deletePurchase,
-);
+const express = require("express");
+
+const router = express.Router();
+
+const {
+
+  createPurchase,
+
+  getPurchases,
+
+  getPurchaseById,
+
+  updatePurchase,
+
+  deletePurchase,
+
+  getTodayPurchases,
+
+  getPendingPurchases,
+
+  getPurchaseBySupplier,
+
+} = require("../controllers/PurchaseController");
+
+const { verifyToken } = require("../middleware/authMiddleware");
+
+/* Purchase */
+
+router.post("/create", verifyToken, createPurchase);
+
+router.get("/all", verifyToken, getPurchases);
+
+router.get("/today", verifyToken, getTodayPurchases);
+
+router.get("/pending-payment", verifyToken, getPendingPurchases);
+
+router.get("/supplier/:supplierId", verifyToken, getPurchaseBySupplier);
+
+router.get("/:id", verifyToken, getPurchaseById);
+
+router.put("/udate/:id", verifyToken, updatePurchase);
+
+router.delete("/delete/:id", verifyToken, deletePurchase);
+
 module.exports = router;

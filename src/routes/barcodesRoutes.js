@@ -1,10 +1,11 @@
 const router = require("express").Router();
 const c = require("../controllers/BarcodeController");
-const { protect, checkPermission } = require("../middleware/authMiddleware");
-router.use(protect);
-router.post("/", checkPermission("Barcode", "canCreate"), c.createBarcode);
-router.get("/", checkPermission("Barcode", "canView"), c.getAllBarcode);
-router.get("/:id", checkPermission("Barcode", "canView"), c.getBarcodeById);
-router.put("/:id", checkPermission("Barcode", "canEdit"), c.updateBarcode);
-router.delete("/:id", checkPermission("Barcode", "canDelete"), c.deleteBarcode);
+const { verifyToken } = require("../middleware/authMiddleware");
+
+router.post("/create", verifyToken, c.createBarcode);
+router.get("/all", verifyToken, c.getAllBarcode);
+router.get("/:id", verifyToken, c.getBarcodeById);
+router.put("/update/:id", verifyToken, c.updateBarcode);
+router.delete("/delete/:id", verifyToken, c.deleteBarcode);
+
 module.exports = router;

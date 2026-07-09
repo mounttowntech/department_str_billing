@@ -1,10 +1,321 @@
-const Purchase=require('../models/Purchase'); const ProductVariant=require('../models/ProductVariant'); const Batch=require('../models/Batch'); const Payment=require('../models/Payment'); const asyncHandler=require('../utils/asyncHandler'); const {success}=require('../utils/responseHandler'); const generatePurchaseNo=require('../utils/generatePurchaseNo'); const generateBarcode=require('../utils/generateBarcode'); const generatePaymentNo=require('../utils/generatePaymentNo'); const {moveStock}=require('../services/inventoryService');
-exports.createPurchase=asyncHandler(async(req,res)=>{const {supplier,store,warehouse,items=[],paidAmount=0}=req.body; let subTotal=0,gstAmount=0,purchaseItems=[]; const purchaseNo=await generatePurchaseNo(); for(const it of items){const variant=await ProductVariant.findOne({skuCode:it.skuCode}).populate('product'); if(!variant) throw new Error(`Variant not found ${it.skuCode}`); const line=Number(it.purchasePrice)*Number(it.quantity); const gst=line*Number(it.gstPercentage||variant.gstPercentage||0)/100; const total=line+gst; subTotal+=line; gstAmount+=gst; let batch=null; if(it.batchNumber||it.expiryDate){batch=await Batch.create({batchNumber:it.batchNumber||`BAT-${Date.now()}`,barcode:it.batchBarcode||generateBarcode('BAT'),product:variant.product._id,variant:variant._id,supplier,purchase:null,store,warehouse,purchasePrice:it.purchasePrice,sellingPrice:variant.sellingPrice,mrp:variant.mrp,quantity:it.quantity,remainingQuantity:it.quantity,expiryDate:it.expiryDate,createdBy:req.user?._id});}
- await moveStock({variantId:variant._id,batchId:batch?._id,quantity:it.quantity,operation:'purchase',referenceModel:'Purchase',referenceNumber:purchaseNo,store,warehouse,createdBy:req.user?._id,remarks:'Purchase stock in'});
- purchaseItems.push({product:variant.product._id,variant:variant._id,batch:batch?._id,skuCode:variant.skuCode,barcode:variant.barcode,productName:variant.product.productName,quantity:it.quantity,unit:variant.unit,purchasePrice:it.purchasePrice,gstPercentage:it.gstPercentage||variant.gstPercentage,gstAmount:gst,totalAmount:total,expiryDate:it.expiryDate});}
- const grandTotal=subTotal+gstAmount, dueAmount=Math.max(grandTotal-paidAmount,0); const purchase=await Purchase.create({purchaseNo,supplier,store,warehouse,items:purchaseItems,subTotal,gstAmount,grandTotal,paidAmount,dueAmount,paymentStatus:paidAmount>=grandTotal?'paid':paidAmount>0?'partial':'unpaid',createdBy:req.user?._id});
- if(paidAmount>0) await Payment.create({paymentNumber:await generatePaymentNo(),paymentType:'Purchase',paymentMode:req.body.paymentMode||'Cash',purchase:purchase._id,supplier,amount:grandTotal,paidAmount,store,createdBy:req.user?._id}); success(res,'Purchase created',purchase,201);});
-exports.getAllPurchase=asyncHandler(async(req,res)=>success(res,'Purchase list',await Purchase.find().populate('supplier store warehouse').sort({createdAt:-1})));
-exports.getPurchaseById=asyncHandler(async(req,res)=>success(res,'Purchase details',await Purchase.findById(req.params.id).populate('supplier store warehouse items.product items.variant')));
-exports.updatePurchase=asyncHandler(async(req,res)=>success(res,'Purchase updated',await Purchase.findByIdAndUpdate(req.params.id,req.body,{new:true,runValidators:true})));
-exports.deletePurchase=asyncHandler(async(req,res)=>{await Purchase.findByIdAndDelete(req.params.id); success(res,'Purchase deleted');});
+const Purchase = require("../models/Purchase");
+
+/* ==============================
+   Create Purchase
+================================ */
+
+exports.createPurchase = async (req, res) => {
+  try {
+    const purchase = await Purchase.create({
+      ...req.body,
+      createdBy: req.user?._id || req.user?.id,
+    });
+
+    const data = await Purchase.findById(purchase._id)
+      .populate("supplier", "supplierName supplierCode")
+      .populate("store", "storeName storeCode")
+      .populate("warehouse", "warehouseName")
+      .populate("items.product", "productName productCode")
+      .populate("items.variant", "variantName skuCode");
+
+    res.status(201).json({
+      success: true,
+      message: "Purchase created successfully",
+      data,
+    });
+
+  } catch (error) {
+
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "Purchase Number already exists",
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+/* ==============================
+   Get All Purchases
+================================ */
+
+exports.getPurchases = async (req, res) => {
+
+  try {
+
+    const filter = {
+      isDeleted: false,
+    };
+
+    if (req.query.store) filter.store = req.query.store;
+
+    if (req.query.supplier) filter.supplier = req.query.supplier;
+
+    if (req.query.paymentStatus)
+      filter.paymentStatus = req.query.paymentStatus;
+
+    if (req.query.purchaseStatus)
+      filter.purchaseStatus = req.query.purchaseStatus;
+
+    if (req.query.fromDate && req.query.toDate) {
+      filter.purchaseDate = {
+        $gte: new Date(req.query.fromDate),
+        $lte: new Date(req.query.toDate),
+      };
+    }
+
+    const purchases = await Purchase.find(filter)
+      .populate("supplier", "supplierName supplierCode")
+      .populate("store", "storeName storeCode")
+      .populate("warehouse", "warehouseName")
+      .populate("createdBy", "firstName lastName")
+      .sort({ purchaseDate: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: purchases.length,
+      data: purchases,
+    });
+
+  } catch (error) {
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+
+  }
+};
+
+/* ==============================
+   Get Purchase By Id
+================================ */
+
+exports.getPurchaseById = async (req, res) => {
+
+  try {
+
+    const purchase = await Purchase.findOne({
+      _id: req.params.id,
+      isDeleted: false,
+    })
+      .populate("supplier")
+      .populate("store")
+      .populate("warehouse")
+      .populate("items.product")
+      .populate("items.variant")
+      .populate("items.batch")
+      .populate("items.unit");
+
+    if (!purchase) {
+      return res.status(404).json({
+        success: false,
+        message: "Purchase not found",
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      data: purchase,
+    });
+
+  } catch (error) {
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+
+  }
+};
+
+/* ==============================
+   Update Purchase
+================================ */
+
+exports.updatePurchase = async (req, res) => {
+
+  try {
+
+    const purchase = await Purchase.findById(req.params.id);
+
+    if (!purchase || purchase.isDeleted) {
+
+      return res.status(404).json({
+        success: false,
+        message: "Purchase not found",
+      });
+
+    }
+
+    Object.assign(purchase, req.body);
+
+    purchase.updatedBy = req.user?._id || req.user?.id;
+
+    await purchase.save();
+
+    res.status(200).json({
+      success: true,
+      message: "Purchase updated successfully",
+      data: purchase,
+    });
+
+  } catch (error) {
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+
+  }
+};
+
+/* ==============================
+   Delete Purchase (Soft Delete)
+================================ */
+
+exports.deletePurchase = async (req, res) => {
+
+  try {
+
+    const purchase = await Purchase.findByIdAndUpdate(
+      req.params.id,
+      {
+        isDeleted: true,
+        updatedBy: req.user?._id || req.user?.id,
+      },
+      {
+        new: true,
+      }
+    );
+
+    if (!purchase) {
+
+      return res.status(404).json({
+        success: false,
+        message: "Purchase not found",
+      });
+
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Purchase deleted successfully",
+    });
+
+  } catch (error) {
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+
+  }
+};
+
+/* ==============================
+   Today's Purchase
+================================ */
+
+exports.getTodayPurchases = async (req, res) => {
+
+  try {
+
+    const today = new Date();
+
+    today.setHours(0, 0, 0, 0);
+
+    const tomorrow = new Date(today);
+
+    tomorrow.setDate(today.getDate() + 1);
+
+    const purchases = await Purchase.find({
+      purchaseDate: {
+        $gte: today,
+        $lt: tomorrow,
+      },
+      isDeleted: false,
+    });
+
+    res.status(200).json({
+      success: true,
+      count: purchases.length,
+      data: purchases,
+    });
+
+  } catch (error) {
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+
+  }
+};
+
+/* ==============================
+   Pending Payment
+================================ */
+
+exports.getPendingPurchases = async (req, res) => {
+
+  try {
+
+    const purchases = await Purchase.find({
+      paymentStatus: {
+        $ne: "paid",
+      },
+      isDeleted: false,
+    });
+
+    res.status(200).json({
+      success: true,
+      count: purchases.length,
+      data: purchases,
+    });
+
+  } catch (error) {
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+
+  }
+};
+
+/* ==============================
+   Supplier Purchase
+================================ */
+
+exports.getPurchaseBySupplier = async (req, res) => {
+
+  try {
+
+    const purchases = await Purchase.find({
+      supplier: req.params.supplierId,
+      isDeleted: false,
+    }).sort({
+      purchaseDate: -1,
+    });
+
+    res.status(200).json({
+      success: true,
+      count: purchases.length,
+      data: purchases,
+    });
+
+  } catch (error) {
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+
+  }
+};

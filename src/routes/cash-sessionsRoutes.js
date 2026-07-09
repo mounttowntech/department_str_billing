@@ -1,26 +1,11 @@
 const router = require("express").Router();
 const c = require("../controllers/CashSessionController");
-const { protect, checkPermission } = require("../middleware/authMiddleware");
-router.use(protect);
-router.post(
-  "/",
-  checkPermission("CashSession", "canCreate"),
-  c.createCashSession,
-);
-router.get("/", checkPermission("CashSession", "canView"), c.getAllCashSession);
-router.get(
-  "/:id",
-  checkPermission("CashSession", "canView"),
-  c.getCashSessionById,
-);
-router.put(
-  "/:id",
-  checkPermission("CashSession", "canEdit"),
-  c.updateCashSession,
-);
-router.delete(
-  "/:id",
-  checkPermission("CashSession", "canDelete"),
-  c.deleteCashSession,
-);
+const { verifyToken} = require("../middleware/authMiddleware"); // adjust to your actual middleware names
+
+router.post("/create", verifyToken, c.createCashSession);
+router.get("/all", verifyToken, c.getAllCashSession);
+router.get("/:id", verifyToken, c.getCashSessionById);
+router.put("/update/:id", verifyToken, c.updateCashSession);
+router.delete("/delete/:id", verifyToken, c.deleteCashSession);
+
 module.exports = router;

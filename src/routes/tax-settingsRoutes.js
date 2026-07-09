@@ -1,26 +1,22 @@
-const router = require("express").Router();
-const c = require("../controllers/TaxSettingController");
-const { protect, checkPermission } = require("../middleware/authMiddleware");
-router.use(protect);
-router.post(
-  "/",
-  checkPermission("TaxSetting", "canCreate"),
-  c.createTaxSetting,
-);
-router.get("/", checkPermission("TaxSetting", "canView"), c.getAllTaxSetting);
-router.get(
-  "/:id",
-  checkPermission("TaxSetting", "canView"),
-  c.getTaxSettingById,
-);
-router.put(
-  "/:id",
-  checkPermission("TaxSetting", "canEdit"),
-  c.updateTaxSetting,
-);
-router.delete(
-  "/:id",
-  checkPermission("TaxSetting", "canDelete"),
-  c.deleteTaxSetting,
-);
+const express = require("express");
+
+const router = express.Router();
+
+const taxController = require("../controllers/taxSettingController");
+
+// Create
+router.post("/create", taxController.createTaxSetting);
+
+// Get All
+router.get("/all", taxController.getAllTaxSettings);
+
+// Get By Id
+router.get("/:id", taxController.getTaxSettingById);
+
+// Update
+router.put("/update/:id", taxController.updateTaxSetting);
+
+// Delete
+router.delete("/delete/:id", taxController.deleteTaxSetting);
+
 module.exports = router;

@@ -1,30 +1,40 @@
 const router = require("express").Router();
-const c = require("../controllers/StockTransferController");
-const { protect, checkPermission } = require("../middleware/authMiddleware");
-router.use(protect);
+const controller = require("../controllers/StockTransferController");
+
+// Create Stock Transfer
 router.post(
-  "/",
-  checkPermission("StockTransfer", "canCreate"),
-  c.createStockTransfer,
+  "/create",
+  controller.createStockTransfer
 );
+
+// Get All Stock Transfers
 router.get(
-  "/",
-  checkPermission("StockTransfer", "canView"),
-  c.getAllStockTransfer,
+  "/all",
+  controller.getStockTransfer
 );
+
+// Get Stock Transfer By ID
 router.get(
   "/:id",
-  checkPermission("StockTransfer", "canView"),
-  c.getStockTransferById,
+  controller.getStockTransferById
 );
+
+// Update Stock Transfer
 router.put(
-  "/:id",
-  checkPermission("StockTransfer", "canEdit"),
-  c.updateStockTransfer,
+  "/update/:id",
+  controller.updateStockTransferById
 );
+
+// Cancel Stock Transfer
+router.patch(
+  "/cancel/:id",
+  controller.cancelStockTransfer
+);
+
+// Delete Stock Transfer
 router.delete(
-  "/:id",
-  checkPermission("StockTransfer", "canDelete"),
-  c.deleteStockTransfer,
+  "/delete/:id",
+  controller.deleteStockTransferById
 );
+
 module.exports = router;

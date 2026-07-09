@@ -1,26 +1,35 @@
 const router = require("express").Router();
-const c = require("../controllers/StockLedgerController");
-const { protect, checkPermission } = require("../middleware/authMiddleware");
-router.use(protect);
+
+const controller = require("../controllers/StockLedgerController");
+
+// Create
 router.post(
-  "/",
-  checkPermission("StockLedger", "canCreate"),
-  c.createStockLedger,
+  "/create",
+  controller.createStockLedger
 );
-router.get("/", checkPermission("StockLedger", "canView"), c.getAllStockLedger);
+
+// Get All
+router.get(
+  "/all",
+  controller.getStockLedger
+);
+
+// Get By Id
 router.get(
   "/:id",
-  checkPermission("StockLedger", "canView"),
-  c.getStockLedgerById,
+  controller.getStockLedgerById
 );
+
+// Update
 router.put(
-  "/:id",
-  checkPermission("StockLedger", "canEdit"),
-  c.updateStockLedger,
+  "/update/:id",
+  controller.updateStockLedgerById
 );
+
+// Delete
 router.delete(
-  "/:id",
-  checkPermission("StockLedger", "canDelete"),
-  c.deleteStockLedger,
+  "/delete/:id",
+  controller.deleteStockLedgerById
 );
+
 module.exports = router;

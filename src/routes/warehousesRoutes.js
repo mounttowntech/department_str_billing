@@ -1,14 +1,21 @@
 const router = require("express").Router();
-const c = require("../controllers/WarehouseController");
-const { protect, checkPermission } = require("../middleware/authMiddleware");
-router.use(protect);
-router.post("/", checkPermission("Warehouse", "canCreate"), c.createWarehouse);
-router.get("/", checkPermission("Warehouse", "canView"), c.getAllWarehouse);
-router.get("/:id", checkPermission("Warehouse", "canView"), c.getWarehouseById);
-router.put("/:id", checkPermission("Warehouse", "canEdit"), c.updateWarehouse);
-router.delete(
-  "/:id",
-  checkPermission("Warehouse", "canDelete"),
-  c.deleteWarehouse,
-);
+
+const {
+  createWarehouse,
+  getAllWarehouses,
+  getWarehouseById,
+  updateWarehouse,
+  deleteWarehouse,
+  activateWarehouse,
+} = require("../controllers/WarehouseController");
+
+const { verifyToken } = require("../middleware/authMiddleware");
+
+router.post("/create", verifyToken, createWarehouse);
+router.get("/all", verifyToken, getAllWarehouses);
+router.get("/:id", verifyToken, getWarehouseById);
+router.put("/update/:id", verifyToken, updateWarehouse);
+router.patch("/activate/:id", verifyToken, activateWarehouse);
+router.delete("/delete/:id", verifyToken, deleteWarehouse);
+
 module.exports = router;

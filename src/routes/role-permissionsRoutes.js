@@ -1,30 +1,21 @@
 const router = require("express").Router();
-const c = require("../controllers/RolePermissionController");
-const { protect, checkPermission } = require("../middleware/authMiddleware");
-router.use(protect);
-router.post(
-  "/",
-  checkPermission("RolePermission", "canCreate"),
-  c.createRolePermission,
-);
-router.get(
-  "/",
-  checkPermission("RolePermission", "canView"),
-  c.getAllRolePermission,
-);
-router.get(
-  "/:id",
-  checkPermission("RolePermission", "canView"),
-  c.getRolePermissionById,
-);
-router.put(
-  "/:id",
-  checkPermission("RolePermission", "canEdit"),
-  c.updateRolePermission,
-);
-router.delete(
-  "/:id",
-  checkPermission("RolePermission", "canDelete"),
-  c.deleteRolePermission,
-);
+
+const {
+  createRolePermission,
+  getAllRolePermission,
+  getRolePermissionById,
+  updateRolePermission,
+  deleteRolePermission,
+  activateRolePermission,
+} = require("../controllers/RolePermissionController");
+
+const { verifyToken } = require("../middleware/authMiddleware");
+
+router.post("/create", verifyToken, createRolePermission);
+router.get("/all", verifyToken, getAllRolePermission);
+router.get("/:id", verifyToken, getRolePermissionById);
+router.put("/update/:id", verifyToken, updateRolePermission);
+router.patch("/activate/:id", verifyToken, activateRolePermission);
+router.delete("/delete/:id", verifyToken, deleteRolePermission);
+
 module.exports = router;

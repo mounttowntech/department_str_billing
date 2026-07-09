@@ -1,30 +1,21 @@
 const router = require("express").Router();
-const c = require("../controllers/CustomerAddressController");
-const { protect, checkPermission } = require("../middleware/authMiddleware");
-router.use(protect);
-router.post(
-  "/",
-  checkPermission("CustomerAddress", "canCreate"),
-  c.createCustomerAddress,
-);
-router.get(
-  "/",
-  checkPermission("CustomerAddress", "canView"),
-  c.getAllCustomerAddress,
-);
-router.get(
-  "/:id",
-  checkPermission("CustomerAddress", "canView"),
-  c.getCustomerAddressById,
-);
-router.put(
-  "/:id",
-  checkPermission("CustomerAddress", "canEdit"),
-  c.updateCustomerAddress,
-);
-router.delete(
-  "/:id",
-  checkPermission("CustomerAddress", "canDelete"),
-  c.deleteCustomerAddress,
-);
+
+const {
+  createCustomerAddress,
+  getAllCustomerAddress,
+  getCustomerAddressById,
+  updateCustomerAddress,
+  deleteCustomerAddress,
+  activateCustomerAddress,
+} = require("../controllers/CustomerAddressController");
+
+const { verifyToken } = require("../middleware/authMiddleware");
+
+router.post("/create", verifyToken, createCustomerAddress);
+router.get("/all", verifyToken, getAllCustomerAddress);
+router.get("/:id", verifyToken, getCustomerAddressById);
+router.put("/update/:id", verifyToken, updateCustomerAddress);
+router.patch("/activate/:id", verifyToken, activateCustomerAddress);
+router.delete("/delete/:id", verifyToken, deleteCustomerAddress);
+
 module.exports = router;

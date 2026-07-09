@@ -1,30 +1,30 @@
-const router = require("express").Router();
-const c = require("../controllers/SalesInvoiceController");
-const { protect, checkPermission } = require("../middleware/authMiddleware");
-router.use(protect);
-router.post(
-  "/",
-  checkPermission("SalesInvoice", "canCreate"),
-  c.createSalesInvoice,
-);
-router.get(
-  "/",
-  checkPermission("SalesInvoice", "canView"),
-  c.getAllSalesInvoice,
-);
-router.get(
-  "/:id",
-  checkPermission("SalesInvoice", "canView"),
-  c.getSalesInvoiceById,
-);
-router.put(
-  "/:id",
-  checkPermission("SalesInvoice", "canEdit"),
-  c.updateSalesInvoice,
-);
-router.delete(
-  "/:id",
-  checkPermission("SalesInvoice", "canDelete"),
-  c.deleteSalesInvoice,
-);
+const express = require("express");
+
+const router = express.Router();
+
+const {
+  createSalesInvoice,
+  getSalesInvoices,
+  getSalesInvoiceById,
+  updateSalesInvoice,
+  deleteSalesInvoice,
+} = require("../controllers/salesInvoiceController");
+
+const { verifyToken } = require("../middleware/authMiddleware");
+
+// Create Sales Invoice
+router.post("/create", verifyToken, createSalesInvoice);
+
+// Get All Sales Invoices
+router.get("/all", verifyToken, getSalesInvoices);
+
+// Get Sales Invoice By ID
+router.get("/:id", verifyToken, getSalesInvoiceById);
+
+// Update Sales Invoice
+router.put("/update/:id", verifyToken, updateSalesInvoice);
+
+// Soft Delete Sales Invoice
+router.delete("/delete/:id", verifyToken, deleteSalesInvoice);
+
 module.exports = router;

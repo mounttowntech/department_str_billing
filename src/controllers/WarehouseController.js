@@ -1,9 +1,182 @@
-const response = require('../utils/responseHandler');
-const success = response.success;
-const asyncHandler = require('../utils/asyncHandler');
-const Model = require('../models/Warehouse');
-exports.createWarehouse = asyncHandler(async(req,res)=>{ const data=await Model.create({...req.body, createdBy:req.user?._id}); success(res,'Warehouse created',data,201); });
-exports.getAllWarehouse = asyncHandler(async(req,res)=>{ const filter={}; if(req.query.status) filter.status=req.query.status; if(req.query.store) filter.store=req.query.store; const data=await Model.find(filter).sort({createdAt:-1}); success(res,'Warehouse list',data); });
-exports.getWarehouseById = asyncHandler(async(req,res)=>{ const data=await Model.findById(req.params.id); if(!data) return res.status(404).json({success:false,message:'Warehouse not found'}); success(res,'Warehouse details',data); });
-exports.updateWarehouse = asyncHandler(async(req,res)=>{ const data=await Model.findByIdAndUpdate(req.params.id,{...req.body,updatedBy:req.user?._id},{new:true,runValidators:true}); if(!data) return res.status(404).json({success:false,message:'Warehouse not found'}); success(res,'Warehouse updated',data); });
-exports.deleteWarehouse = asyncHandler(async(req,res)=>{ const data=await Model.findByIdAndDelete(req.params.id); if(!data) return res.status(404).json({success:false,message:'Warehouse not found'}); success(res,'Warehouse deleted'); });
+const Warehouse = require("../models/Warehouse");
+
+exports.createWarehouse = async (req, res) => {
+  try {
+    const warehouse = await Warehouse.create({
+      ...req.body,
+      createdBy: req.user?.id,
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Warehouse created successfully",
+      data: warehouse,
+    });
+  } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "Warehouse code already exists for this store.",
+      });
+    }
+
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.getAllWarehouses = async (req, res) => {
+  try {
+    const { store, status, warehouseType, search } = req.query;
+
+    const filter = {};
+
+    if (store) filter.store = store;
+    if (status) filter.status = status;
+    if (warehouseType) filter.warehouseType = warehouseType;
+
+    if (search) {
+      filter.$or = [
+        { warehouseCode: { $regex: search, $options: "i" } },
+        { warehouseName: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const warehouses = await Warehouse.find(filter)
+      .populate("store", "storeName storeCode")
+      .populate("manager", "employeeCode firstName lastName phone")
+      .sort({ warehouseName: 1 });
+
+    res.json({
+      success: true,
+      count: warehouses.length,
+      data: warehouses,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.getWarehouseById = async (req, res) => {
+  try {
+    const warehouse = await Warehouse.findById(req.params.id)
+      .populate("store", "storeName storeCode")
+      .populate("manager", "employeeCode firstName lastName phone email");
+
+    if (!warehouse) {
+      return res.status(404).json({
+        success: false,
+        message: "Warehouse not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: warehouse,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.updateWarehouse = async (req, res) => {
+  try {
+    const warehouse = await Warehouse.findByIdAndUpdate(
+      req.params.id,
+      {
+        ...req.body,
+        updatedBy: req.user?.id,
+      },
+      {
+        new: true,
+        runValidators: true,
+      }
+    );
+
+    if (!warehouse) {
+      return res.status(404).json({
+        success: false,
+        message: "Warehouse not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Warehouse updated successfully",
+      data: warehouse,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.deleteWarehouse = async (req, res) => {
+  try {
+    const warehouse = await Warehouse.findByIdAndUpdate(
+      req.params.id,
+      {
+        status: "inactive",
+        updatedBy: req.user?.id,
+      },
+      { new: true }
+    );
+
+    if (!warehouse) {
+      return res.status(404).json({
+        success: false,
+        message: "Warehouse not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Warehouse deactivated successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+exports.activateWarehouse = async (req, res) => {
+  try {
+    const warehouse = await Warehouse.findByIdAndUpdate(
+      req.params.id,
+      {
+        status: "active",
+        updatedBy: req.user?.id,
+      },
+      { new: true }
+    );
+
+    if (!warehouse) {
+      return res.status(404).json({
+        success: false,
+        message: "Warehouse not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      message: "Warehouse activated successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};

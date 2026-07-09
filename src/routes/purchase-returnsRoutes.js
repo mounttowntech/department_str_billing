@@ -1,30 +1,43 @@
-const router = require("express").Router();
-const c = require("../controllers/PurchaseReturnController");
-const { protect, checkPermission } = require("../middleware/authMiddleware");
-router.use(protect);
+const express = require("express");
+
+const router = express.Router();
+
+const purchaseReturnController = require("../controllers/purchaseReturnController");
+
+// Create Purchase Return
 router.post(
-  "/",
-  checkPermission("PurchaseReturn", "canCreate"),
-  c.createPurchaseReturn,
+  "/create",
+  purchaseReturnController.createPurchaseReturn
 );
+
+// Get All Purchase Returns
 router.get(
-  "/",
-  checkPermission("PurchaseReturn", "canView"),
-  c.getAllPurchaseReturn,
+  "/all",
+  purchaseReturnController.getPurchaseReturns
 );
+
+// Get Purchase Return By ID
 router.get(
   "/:id",
-  checkPermission("PurchaseReturn", "canView"),
-  c.getPurchaseReturnById,
+  purchaseReturnController.getPurchaseReturnById
 );
+
+// Update Purchase Return
 router.put(
-  "/:id",
-  checkPermission("PurchaseReturn", "canEdit"),
-  c.updatePurchaseReturn,
+  "/update/:id",
+  purchaseReturnController.updatePurchaseReturn
 );
+
+// Update Return Status
+router.patch(
+  "/:id/status",
+  purchaseReturnController.updateReturnStatus
+);
+
+// Delete Purchase Return (Soft Delete)
 router.delete(
-  "/:id",
-  checkPermission("PurchaseReturn", "canDelete"),
-  c.deletePurchaseReturn,
+  "/delete/:id",
+  purchaseReturnController.deletePurchaseReturn
 );
+
 module.exports = router;

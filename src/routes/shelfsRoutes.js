@@ -1,10 +1,21 @@
 const router = require("express").Router();
-const c = require("../controllers/ShelfController");
-const { protect, checkPermission } = require("../middleware/authMiddleware");
-router.use(protect);
-router.post("/", checkPermission("Shelf", "canCreate"), c.createShelf);
-router.get("/", checkPermission("Shelf", "canView"), c.getAllShelf);
-router.get("/:id", checkPermission("Shelf", "canView"), c.getShelfById);
-router.put("/:id", checkPermission("Shelf", "canEdit"), c.updateShelf);
-router.delete("/:id", checkPermission("Shelf", "canDelete"), c.deleteShelf);
+
+const {
+  createShelf,
+  getAllShelf,
+  getShelfById,
+  updateShelf,
+  deleteShelf,
+  activateShelf,
+} = require("../controllers/ShelfController");
+
+const { verifyToken } = require("../middleware/authMiddleware");
+
+router.post("/create", verifyToken, createShelf);
+router.get("/all", verifyToken, getAllShelf);
+router.get("/:id", verifyToken, getShelfById);
+router.put("/update/:id", verifyToken, updateShelf);
+router.patch("/activate/:id", verifyToken, activateShelf);
+router.delete("/delete/:id", verifyToken, deleteShelf);
+
 module.exports = router;
