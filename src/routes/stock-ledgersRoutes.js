@@ -1,25 +1,35 @@
 const router = require("express").Router();
-const c = require("../controllers/StockLedgerController");
 
+const controller = require("../controllers/StockLedgerController");
+
+// Create
 router.post(
   "/create",
- 
-  c.createStockLedger,
+  controller.createStockLedger
 );
-router.get("/all",  c.getAllStockLedger);
+
+// Get All
+router.get(
+  "/all",
+  controller.getStockLedger
+);
+
+// Get By Id
 router.get(
   "/:id",
-  
-  c.getStockLedgerById,
+  controller.getStockLedgerById
 );
+
+// Update
 router.put(
-  "/:id",
-  
-  c.updateStockLedger,
+  "/update/:id",
+  controller.updateStockLedgerById
 );
+
+// Delete
 router.delete(
-  "/:id",
-  
-  c.deleteStockLedger,
+  "/delete/:id",
+  controller.deleteStockLedgerById
 );
+
 module.exports = router;

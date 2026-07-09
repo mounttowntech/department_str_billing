@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+
 const schema = new mongoose.Schema(
   {
     adjustmentNo: {
@@ -22,12 +23,23 @@ const schema = new mongoose.Schema(
       enum: ["increase", "decrease"],
       required: true,
     },
-    quantity: { type: Number, required: true },
+    quantity: { type: Number, required: true, min: 1 },
     beforeStock: Number,
     afterStock: Number,
-    reason: String,
+    reason: { type: String, trim: true },
+    status: {
+      type: String,
+      enum: ["active", "reversed"],
+      default: "active",
+    },
+    reversedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    reversedAt: Date,
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   },
-  { timestamps: true, versionKey: false },
+  { timestamps: true, versionKey: false }
 );
+
+schema.index({ store: 1, createdAt: -1 });
+schema.index({ variant: 1, createdAt: -1 });
+
 module.exports = mongoose.model("StockAdjustment", schema);

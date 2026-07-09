@@ -1,29 +1,40 @@
 const router = require("express").Router();
-const c = require("../controllers/StockTransferController");
+const controller = require("../controllers/StockTransferController");
 
+// Create Stock Transfer
 router.post(
   "/create",
- 
-  c.createStockTransfer,
+  controller.createStockTransfer
 );
+
+// Get All Stock Transfers
 router.get(
   "/all",
- 
-  c.getAllStockTransfer,
+  controller.getStockTransfer
 );
+
+// Get Stock Transfer By ID
 router.get(
   "/:id",
-  
-  c.getStockTransferById,
+  controller.getStockTransferById
 );
+
+// Update Stock Transfer
 router.put(
-  "/:id",
-  
-  c.updateStockTransfer,
+  "/update/:id",
+  controller.updateStockTransferById
 );
+
+// Cancel Stock Transfer
+router.patch(
+  "/cancel/:id",
+  controller.cancelStockTransfer
+);
+
+// Delete Stock Transfer
 router.delete(
-  "/:id",
-  
-  c.deleteStockTransfer,
+  "/delete/:id",
+  controller.deleteStockTransferById
 );
+
 module.exports = router;
