@@ -42,7 +42,7 @@ app.use("/api/report", require("./src/routes/reportRoutes"));
 app.use("/api/role-permissions", require("./src/routes/role-permissionsRoutes"));
 app.use("/api/sales-invoices", require("./src/routes/sales-invoicesRoutes"));
 app.use("/api/sales-returns", require("./src/routes/sales-returnsRoutes"));
-app.use("/api/settingss", require("./src/routes/settingssRoutes"));
+app.use("/api/settings", require("./src/routes/settingssRoutes"));
 app.use("/api/shelfs", require("./src/routes/shelfsRoutes"));
 app.use("/api/stock-adjustments", require("./src/routes/stock-adjustmentsRoutes"));
 app.use("/api/stock-ledgers", require("./src/routes/stock-ledgersRoutes"));

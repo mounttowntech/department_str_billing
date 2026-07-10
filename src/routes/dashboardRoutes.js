@@ -1,6 +1,20 @@
-const router = require("express").Router();
-const c = require("../controllers/DashboardController");
+const express = require("express");
 
-router.get("/cards", c.cards);
-router.get("/recent", c.recent);
+const router = express.Router();
+
+const dashboardController = require("../controllers/DashboardController");
+
+const { verifyToken } = require("../middleware/authMiddleware");
+
+router.get(
+  "/cards",
+  dashboardController.cards
+);
+
+router.get(
+  "/recent",
+
+  dashboardController.recent
+);
+
 module.exports = router;
