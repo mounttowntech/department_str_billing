@@ -30,7 +30,7 @@ router.post("/reset-password", resetPassword);
 // Change Password
 router.put("/change-password", verifyToken, changePassword);
 
-// Logged-in user details
-router.get("/me", verifyToken, me);
+// // Logged-in user details
+// router.get("/me", verifyToken, me);
 
 module.exports = router;

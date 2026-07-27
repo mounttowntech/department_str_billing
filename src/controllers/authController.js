@@ -1,296 +1,286 @@
 const User = require("../models/User");
+const RolePermission = require("../models/RolePermission");
 const jwt = require("jsonwebtoken");
+
 const crypto = require("crypto");
-
-const generateToken = (user) => {
-  return jwt.sign(
-    {
-      id: user._id,
-      role: user.role,
-      store: user.store,
-      email: user.email,
-    },
-    process.env.JWT_SECRET,
-    { expiresIn: "7d" }
-  );
-};
-
-const generateEmployeeCode = async () => {
-  const lastUser = await User.findOne()
-  
-    .select("employeeCode");
-
-  if (!lastUser || !lastUser.employeeCode) return "EMP0001";
-
-  const number = parseInt(lastUser.employeeCode.replace("EMP", ""), 10);
-  return `EMP${String(number + 1).padStart(4, "0")}`;
-};
-
-// REGISTER
 exports.register = async (req, res) => {
-  try {
-    const {
-      firstName,
-      lastName,
-      email,
-      phone,
-      password,
-      role,
-      store,
-      designation,
-      address,
-      city,
-      state,
-      pincode,
-      joiningDate,
-      salary,
-    } = req.body;
+    try {
 
-    const exists = await User.findOne({
-      $or: [{ email }, { phone }],
-    });
+        const {
+            firstName,
+            lastName,
+            email,
+            phone,
+            password,
+            role,
+            store,
+            designation,
+            address,
+            city,
+            state,
+            pincode,
+            salary
+        } = req.body;
 
-    if (exists) {
-      return res.status(400).json({
-        success: false,
-        message: "Email or phone already exists",
-      });
+        if (!role) {
+            return res.status(400).json({
+                success:false,
+                message:"Role is required"
+            });
+        }
+
+        const roleExists = await RolePermission.findById(role);
+
+        if (!roleExists) {
+            return res.status(404).json({
+                success:false,
+                message:"Invalid role"
+            });
+        }
+
+        const exists = await User.findOne({
+            $or:[
+                {email},
+                {phone}
+            ]
+        });
+
+        if(exists){
+            return res.status(400).json({
+                success:false,
+                message:"User already exists"
+            });
+        }
+
+        const user = await User.create({
+            firstName,
+            lastName,
+            email,
+            phone,
+            password,
+            role,
+            store,
+            designation,
+            address,
+            city,
+            state,
+            pincode,
+            salary
+        });
+
+        res.status(201).json({
+            success:true,
+            message:"User registered successfully",
+            data:user
+        });
+
+    } catch (err) {
+
+        res.status(500).json({
+            success:false,
+            message:err.message
+        });
+
+    }
+};
+exports.login = async (req,res)=>{
+
+    try{
+
+        const {email,password}=req.body;
+
+        const user = await User.findOne({email})
+        .select("+password")
+        .populate("role")
+        .populate("store");
+
+        if(!user){
+            return res.status(404).json({
+                success:false,
+                message:"Invalid email"
+            });
+        }
+
+        if(user.status==="blocked"){
+            return res.status(403).json({
+                success:false,
+                message:"Account blocked"
+            });
+        }
+
+        const match = await user.comparePassword(password);
+
+        if(!match){
+            return res.status(401).json({
+                success:false,
+                message:"Invalid password"
+            });
+        }
+
+        const token = jwt.sign(
+            {
+                id:user._id,
+                role:user.role._id
+            },
+            process.env.JWT_SECRET,
+            {
+                expiresIn:"7d"
+            }
+        );
+
+        user.lastLogin=new Date();
+
+        await user.save();
+
+        res.json({
+            success:true,
+            token,
+            user
+        });
+
+    }catch(err){
+
+        res.status(500).json({
+            success:false,
+            message:err.message
+        });
+
     }
 
-    const employeeCode = await generateEmployeeCode();
-
-    const user = await User.create({
-      employeeCode,
-      firstName,
-      lastName,
-      email,
-      phone,
-      password,
-      role,
-      store,
-      designation,
-      address,
-      city,
-      state,
-      pincode,
-      joiningDate,
-      salary,
-      profileImage: req.file ? req.file.path : null,
-    });
-
-    const token = generateToken(user);
-
-    res.status(201).json({
-      success: true,
-      message: "User registered successfully",
-      token,
-      data: {
-        _id: user._id,
-        employeeCode: user.employeeCode,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        store: user.store,
-        status: user.status,
-      },
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
 };
 
-// LOGIN
-exports.login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
 
-    const user = await User.findOne({ email })
-      .select("+password")
-      .populate("role")
-      .populate("store");
+exports.forgotPassword = async(req,res)=>{
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "Invalid email or password",
-      });
+    try{
+
+        const {email}=req.body;
+
+        const user=await User.findOne({email});
+
+        if(!user){
+
+            return res.status(404).json({
+                success:false,
+                message:"User not found"
+            });
+
+        }
+
+        const otp=Math.floor(100000+Math.random()*900000).toString();
+
+        user.resetPasswordOTP=otp;
+
+        user.resetPasswordOTPExpire=Date.now()+10*60*1000;
+
+        await user.save();
+
+        // Send OTP using Nodemailer
+
+        res.json({
+            success:true,
+            message:"OTP sent successfully"
+        });
+
+    }catch(err){
+
+        res.status(500).json({
+            success:false,
+            message:err.message
+        });
+
     }
 
-    if (user.status !== "active") {
-      return res.status(403).json({
-        success: false,
-        message: "Your account is inactive or blocked",
-      });
-    }
-
-    const isMatch = await user.comparePassword(password);
-
-    if (!isMatch) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid email or password",
-      });
-    }
-
-    user.lastLogin = new Date();
-    await user.save();
-
-    const token = generateToken(user);
-
-    res.json({
-      success: true,
-      message: "Login successful",
-      token,
-      data: {
-        _id: user._id,
-        employeeCode: user.employeeCode,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        store: user.store,
-        status: user.status,
-      },
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
 };
+exports.resetPassword = async(req,res)=>{
 
-// FORGOT PASSWORD
-exports.forgotPassword = async (req, res) => {
-  try {
-    const { email } = req.body;
+    try{
 
-    const user = await User.findOne({ email });
+        const {
+            email,
+            otp,
+            password
+        }=req.body;
 
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found with this email",
-      });
+        const user=await User.findOne({
+            email,
+            resetPasswordOTP:otp,
+            resetPasswordOTPExpire:{
+                $gt:Date.now()
+            }
+        }).select("+password");
+
+        if(!user){
+
+            return res.status(400).json({
+                success:false,
+                message:"Invalid OTP"
+            });
+
+        }
+
+        user.password=password;
+
+        user.resetPasswordOTP=undefined;
+
+        user.resetPasswordOTPExpire=undefined;
+
+        await user.save();
+
+        res.json({
+            success:true,
+            message:"Password changed successfully"
+        });
+
+    }catch(err){
+
+        res.status(500).json({
+            success:false,
+            message:err.message
+        });
+
     }
 
-    const otp = Math.floor(100000 + Math.random() * 900000).toString();
-
-    user.resetPasswordOTP = otp;
-    user.resetPasswordOTPExpire = Date.now() + 10 * 60 * 1000;
-
-    await user.save();
-
-    // Later you can send this OTP by email using Nodemailer
-    res.json({
-      success: true,
-      message: "OTP generated successfully",
-      otp,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
 };
+exports.changePassword = async(req,res)=>{
 
-// RESET PASSWORD USING OTP
-exports.resetPassword = async (req, res) => {
-  try {
-    const { email, otp, newPassword } = req.body;
+    try{
 
-    const user = await User.findOne({
-      email,
-      resetPasswordOTP: otp,
-      resetPasswordOTPExpire: { $gt: Date.now() },
-    }).select("+password");
+        const {
+            oldPassword,
+            newPassword
+        }=req.body;
 
-    if (!user) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid or expired OTP",
-      });
+        const user=await User.findById(req.user.id)
+        .select("+password");
+
+        const match=await user.comparePassword(oldPassword);
+
+        if(!match){
+
+            return res.status(400).json({
+                success:false,
+                message:"Old password is incorrect"
+            });
+
+        }
+
+        user.password=newPassword;
+
+        await user.save();
+
+        res.json({
+            success:true,
+            message:"Password updated successfully"
+        });
+
+    }catch(err){
+
+        res.status(500).json({
+            success:false,
+            message:err.message
+        });
+
     }
 
-    user.password = newPassword;
-    user.resetPasswordOTP = undefined;
-    user.resetPasswordOTPExpire = undefined;
-
-    await user.save();
-
-    res.json({
-      success: true,
-      message: "Password reset successfully",
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
-
-// CHANGE PASSWORD
-exports.changePassword = async (req, res) => {
-  try {
-    const { oldPassword, newPassword } = req.body;
-
-    const user = await User.findById(req.user.id).select("+password");
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found",
-      });
-    }
-
-    const isMatch = await user.comparePassword(oldPassword);
-
-    if (!isMatch) {
-      return res.status(400).json({
-        success: false,
-        message: "Old password is incorrect",
-      });
-    }
-
-    user.password = newPassword;
-    await user.save();
-
-    res.json({
-      success: true,
-      message: "Password changed successfully",
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
-
-// ME
-exports.me = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id)
-      .select("-password")
-      .populate("role")
-      .populate("store");
-
-    res.json({
-      success: true,
-      data: user,
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
 };
