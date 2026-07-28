@@ -55,7 +55,7 @@ const userSchema = new mongoose.Schema(
       ref: "Store",
     },
 
-    designation: String,
+    // designation: String,
     address: String,
     city: String,
     state: String,
