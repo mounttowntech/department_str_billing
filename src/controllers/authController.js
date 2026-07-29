@@ -1,35 +1,35 @@
 const User = require("../models/User");
+const RolePermission = require("../models/RolePermission");
+const Store = require("../models/Store");
+
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 
-const generateToken = (user) => {
-  return jwt.sign(
-    {
-      id: user._id,
-      role: user.role,
-      store: user.store,
-      email: user.email,
-    },
-    process.env.JWT_SECRET,
-    { expiresIn: "7d" }
-  );
+// Email
+const sendMail = require("../utils/sendMail");
+
+const registerEmail = require("../templates/registerEmail");
+const loginEmail = require("../templates/loginEmail");
+const forgotPasswordEmail = require("../templates/forgotPasswordEmail");
+const resetPasswordEmail = require("../templates/resetPasswordEmail");
+const changePasswordEmail = require("../templates/changePasswordEmail");
+const sendEmailSafely = async ({ to, subject, html }) => {
+  try {
+    await sendMail({
+      to,
+      subject,
+      html,
+    });
+
+    console.log(`✅ Email sent to ${to}`);
+  } catch (error) {
+    console.error(`❌ Failed to send email to ${to}`);
+    console.error(error.message);
+  }
 };
-
-const generateEmployeeCode = async () => {
-  const lastUser = await User.findOne()
-  
-    .select("employeeCode");
-
-  if (!lastUser || !lastUser.employeeCode) return "EMP0001";
-
-  const number = parseInt(lastUser.employeeCode.replace("EMP", ""), 10);
-  return `EMP${String(number + 1).padStart(4, "0")}`;
-};
-
-// REGISTER
 exports.register = async (req, res) => {
   try {
-    const {
+    let {
       firstName,
       lastName,
       email,
@@ -37,30 +37,71 @@ exports.register = async (req, res) => {
       password,
       role,
       store,
-      designation,
       address,
       city,
       state,
       pincode,
-      joiningDate,
       salary,
     } = req.body;
 
-    const exists = await User.findOne({
-      $or: [{ email }, { phone }],
-    });
+    // Trim Inputs
+    firstName = firstName?.trim();
+    lastName = lastName?.trim();
+    email = email?.trim().toLowerCase();
+    phone = phone?.trim();
 
-    if (exists) {
+    // Validation
+    if (!firstName || !email || !phone || !password || !role) {
       return res.status(400).json({
         success: false,
-        message: "Email or phone already exists",
+        message: "First name, email, phone, password and role are required.",
       });
     }
 
-    const employeeCode = await generateEmployeeCode();
+    // Check Role
+    const roleExists = await RolePermission.findById(role);
 
+    if (!roleExists) {
+      return res.status(404).json({
+        success: false,
+        message: "Invalid role.",
+      });
+    }
+
+    // Check Store
+    if (store) {
+      const storeExists = await Store.findById(store);
+
+      if (!storeExists) {
+        return res.status(404).json({
+          success: false,
+          message: "Invalid store.",
+        });
+      }
+    }
+
+    // Duplicate Email
+    const emailExists = await User.findOne({ email });
+
+    if (emailExists) {
+      return res.status(400).json({
+        success: false,
+        message: "Email already exists.",
+      });
+    }
+
+    // Duplicate Phone
+    const phoneExists = await User.findOne({ phone });
+
+    if (phoneExists) {
+      return res.status(400).json({
+        success: false,
+        message: "Phone number already exists.",
+      });
+    }
+
+    // Create User
     const user = await User.create({
-      employeeCode,
       firstName,
       lastName,
       email,
@@ -68,43 +109,54 @@ exports.register = async (req, res) => {
       password,
       role,
       store,
-      designation,
       address,
       city,
       state,
       pincode,
-      joiningDate,
       salary,
-      profileImage: req.file ? req.file.path : null,
     });
 
-    const token = generateToken(user);
+    // Send Welcome Email
+    try {
+      await sendMail({
+        to: user.email,
+        subject: "Welcome to WonderBill",
+        html: registerEmail(user),
+      });
 
-    res.status(201).json({
+      console.log("✅ Welcome email sent.");
+    } catch (mailError) {
+      console.error("❌ Welcome email failed.");
+      console.error(mailError);
+    }
+
+    // Remove Password
+    const userData = user.toObject();
+    delete userData.password;
+
+    return res.status(201).json({
       success: true,
-      message: "User registered successfully",
-      token,
-      data: {
-        _id: user._id,
-        employeeCode: user.employeeCode,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        store: user.store,
-        status: user.status,
-      },
+      message: "User registered successfully.",
+      data: userData,
     });
-  } catch (error) {
-    res.status(500).json({
+  } catch (err) {
+    console.error(err);
+
+    if (err.code === 11000) {
+      const field = Object.keys(err.keyPattern)[0];
+
+      return res.status(400).json({
+        success: false,
+        message: `${field} already exists.`,
+      });
+    }
+
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: err.message,
     });
   }
 };
-
-// LOGIN
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -117,180 +169,246 @@ exports.login = async (req, res) => {
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "Invalid email or password",
+        message: "Invalid email",
       });
     }
 
-    if (user.status !== "active") {
+    if (user.status === "blocked") {
       return res.status(403).json({
         success: false,
-        message: "Your account is inactive or blocked",
+        message: "Account blocked",
       });
     }
 
-    const isMatch = await user.comparePassword(password);
+    const match = await user.comparePassword(password);
 
-    if (!isMatch) {
-      return res.status(400).json({
+    if (!match) {
+      return res.status(401).json({
         success: false,
-        message: "Invalid email or password",
+        message: "Invalid password",
       });
     }
 
+    // JWT Token
+    const token = jwt.sign(
+      {
+        id: user._id,
+        role: user.role._id,
+      },
+      process.env.JWT_SECRET,
+      {
+        expiresIn: process.env.JWT_EXPIRE || "7d",
+      }
+    );
+
+    // Update Last Login
     user.lastLogin = new Date();
+
     await user.save();
 
-    const token = generateToken(user);
+    // Send Login Email
+    try {
+      await sendMail({
+        to: user.email,
+        subject: "Successful Login",
+        html: loginEmail(user),
+      });
 
-    res.json({
+      console.log("✅ Login email sent.");
+    } catch (mailError) {
+      console.error("❌ Login email failed.");
+      console.error(mailError);
+    }
+
+    // Remove Password Before Response
+    const userData = user.toObject();
+    delete userData.password;
+
+    return res.status(200).json({
       success: true,
-      message: "Login successful",
+      message: "Login successful.",
       token,
-      data: {
-        _id: user._id,
-        employeeCode: user.employeeCode,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        phone: user.phone,
-        role: user.role,
-        store: user.store,
-        status: user.status,
-      },
+      user: userData,
     });
-  } catch (error) {
-    res.status(500).json({
+  } catch (err) {
+    console.error(err);
+
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: err.message,
     });
   }
 };
 
-// FORGOT PASSWORD
 exports.forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
 
-    const user = await User.findOne({ email });
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: "Email is required.",
+      });
+    }
+
+    const user = await User.findOne({
+      email: email.trim().toLowerCase(),
+    });
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found with this email",
+        message: "User not found.",
       });
     }
 
+    // Generate 6-digit OTP
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
 
     user.resetPasswordOTP = otp;
-    user.resetPasswordOTPExpire = Date.now() + 10 * 60 * 1000;
+    user.resetPasswordOTPExpire = Date.now() + 10 * 60 * 1000; // 10 Minutes
 
     await user.save();
 
-    // Later you can send this OTP by email using Nodemailer
-    res.json({
+    // Send OTP Email
+    try {
+      await sendMail({
+        to: user.email,
+        subject: "Password Reset OTP",
+        html: forgotPasswordEmail(user, otp),
+      });
+
+      console.log("✅ Forgot Password email sent.");
+    } catch (mailError) {
+      console.error("❌ Failed to send Forgot Password email.");
+      console.error(mailError);
+    }
+
+    return res.status(200).json({
       success: true,
-      message: "OTP generated successfully",
-      otp,
+      message: "OTP sent successfully to your registered email.",
     });
-  } catch (error) {
-    res.status(500).json({
+  } catch (err) {
+    console.error(err);
+
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: err.message,
     });
   }
 };
-
-// RESET PASSWORD USING OTP
 exports.resetPassword = async (req, res) => {
   try {
-    const { email, otp, newPassword } = req.body;
+    const { email, otp, password } = req.body;
+
+    if (!email || !otp || !password) {
+      return res.status(400).json({
+        success: false,
+        message: "Email, OTP and new password are required.",
+      });
+    }
 
     const user = await User.findOne({
-      email,
+      email: email.trim().toLowerCase(),
       resetPasswordOTP: otp,
-      resetPasswordOTPExpire: { $gt: Date.now() },
+      resetPasswordOTPExpire: {
+        $gt: Date.now(),
+      },
     }).select("+password");
 
     if (!user) {
       return res.status(400).json({
         success: false,
-        message: "Invalid or expired OTP",
+        message: "Invalid or expired OTP.",
       });
     }
 
-    user.password = newPassword;
+    // Update Password
+    user.password = password;
+
+    // Clear OTP
     user.resetPasswordOTP = undefined;
     user.resetPasswordOTPExpire = undefined;
 
     await user.save();
 
-    res.json({
+    // Send Success Email
+    try {
+      await sendMail({
+        to: user.email,
+        subject: "Password Reset Successful",
+        html: resetPasswordEmail(user),
+      });
+
+      console.log("✅ Password Reset email sent.");
+    } catch (mailError) {
+      console.error("❌ Failed to send Password Reset email.");
+      console.error(mailError);
+    }
+
+    return res.status(200).json({
       success: true,
-      message: "Password reset successfully",
+      message: "Password changed successfully.",
     });
-  } catch (error) {
-    res.status(500).json({
+  } catch (err) {
+    console.error(err);
+
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: err.message,
     });
   }
 };
-
-// CHANGE PASSWORD
 exports.changePassword = async (req, res) => {
   try {
     const { oldPassword, newPassword } = req.body;
+
+    if (!oldPassword || !newPassword) {
+      return res.status(400).json({
+        success: false,
+        message: "Old password and new password are required.",
+      });
+    }
 
     const user = await User.findById(req.user.id).select("+password");
 
     if (!user) {
       return res.status(404).json({
         success: false,
-        message: "User not found",
+        message: "User not found.",
       });
     }
 
-    const isMatch = await user.comparePassword(oldPassword);
+    const match = await user.comparePassword(oldPassword);
 
-    if (!isMatch) {
+    if (!match) {
       return res.status(400).json({
         success: false,
-        message: "Old password is incorrect",
+        message: "Old password is incorrect.",
       });
     }
 
     user.password = newPassword;
+
     await user.save();
 
-    res.json({
-      success: true,
-      message: "Password changed successfully",
+    // Send Email
+    await sendEmailSafely({
+      to: user.email,
+      subject: "Password Changed Successfully",
+      html: changePasswordEmail(user),
     });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
 
-// ME
-exports.me = async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id)
-      .select("-password")
-      .populate("role")
-      .populate("store");
-
-    res.json({
+    return res.status(200).json({
       success: true,
-      data: user,
+      message: "Password updated successfully.",
     });
-  } catch (error) {
-    res.status(500).json({
+  } catch (err) {
+    console.error(err);
+
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: err.message,
     });
   }
 };

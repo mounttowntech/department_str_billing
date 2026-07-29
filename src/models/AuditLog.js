@@ -9,7 +9,7 @@ const schema = new mongoose.Schema(
       trim: true,
     },
     user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
-    role: { type: mongoose.Schema.Types.ObjectId, ref: "RolePermission" },
+    // role: { type: mongoose.Schema.Types.ObjectId, ref: "RolePermission" },
     store: { type: mongoose.Schema.Types.ObjectId, ref: "Store" },
     module: { type: String, required: true },
     action: {

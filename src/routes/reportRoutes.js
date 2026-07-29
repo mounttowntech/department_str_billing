@@ -1,13 +1,25 @@
-const router = require("express").Router();
-const c = require("../controllers/ReportController");
+const express = require("express");
+const router = express.Router();
 
-router.get("/sales", c.salesReport);
-router.get(
-  "/purchases",
-  
-  c.purchaseReport,
-);
-router.get("/stock", c.stockReport);
-router.get("/expenses",  c.expenseReport);
-router.get("/profit-loss", c.profitLoss);
+const {
+  salesReport,
+  purchaseReport,
+  stockReport,
+  expenseReport,
+  profitLoss,
+} = require("../controllers/ReportController");
+
+const { verifyToken } = require("../middleware/authMiddleware");
+
+// Reports
+router.get("/sales", salesReport);
+
+router.get("/purchases",  purchaseReport);
+
+router.get("/stock",stockReport);
+
+router.get("/expenses",  expenseReport);
+
+router.get("/profit-loss", profitLoss);
+
 module.exports = router;
