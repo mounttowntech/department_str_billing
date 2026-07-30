@@ -185,6 +185,97 @@ exports.activateProduct = async (req, res) => {
   }
 };
 
+
+
+
+
+// Get Top Selling Products
+
+exports.getTopSellingProducts = async (req, res) => {
+
+  try {
+
+    const {
+
+      store,
+
+      category,
+
+      brand,
+
+      status = "active",
+
+      limit = 10,
+
+    } = req.query;
+
+
+
+    const filter = {};
+
+
+
+    if (store) filter.store = store;
+
+    if (category) filter.category = category;
+
+    if (brand) filter.brand = brand;
+
+    if (status) filter.status = status;
+
+
+
+    const products = await Product.find(filter)
+
+      .populate("store", "storeName storeCode")
+
+      .populate("category", "categoryName categoryCode")
+
+      .populate("subCategory", "subCategoryName subCategoryCode")
+
+      .populate("brand", "brandName brandCode")
+
+      .populate("unit", "unitName shortName")
+
+      .populate("taxSetting", "taxName totalTax")
+
+      .sort({
+
+        totalSold: -1,
+
+        totalSalesAmount: -1,
+
+      })
+
+      .limit(Number(limit));
+
+
+
+    res.status(200).json({
+
+      success: true,
+
+      message: "Top selling products fetched successfully",
+
+      count: products.length,
+
+      data: products,
+
+    });
+
+  } catch (error) {
+
+    res.status(500).json({
+
+      success: false,
+
+      message: error.message,
+
+    });
+
+  }
+
+};
 exports.getLowStockProducts = async (req, res) => {
   try {
     const { store } = req.query;
