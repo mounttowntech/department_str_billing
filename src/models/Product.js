@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 
-const schema = new mongoose.Schema(
+const productSchema = new mongoose.Schema(
   {
     // Store
     store: {
@@ -93,7 +93,10 @@ const schema = new mongoose.Schema(
       default: true,
     },
 
-    // Stock Summary
+    // ===========================
+    // STOCK INFORMATION
+    // ===========================
+
     totalStock: {
       type: Number,
       default: 0,
@@ -106,14 +109,47 @@ const schema = new mongoose.Schema(
       min: 0,
     },
 
-    // Status
+    // ===========================
+    // SALES INFORMATION
+    // ===========================
+
+    totalSold: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    totalSalesAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    totalOrders: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    lastSoldDate: {
+      type: Date,
+      default: null,
+    },
+
+    // ===========================
+    // STATUS
+    // ===========================
+
     status: {
       type: String,
       enum: ["active", "inactive"],
       default: "active",
     },
 
-    // Audit
+    // ===========================
+    // AUDIT
+    // ===========================
+
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -127,21 +163,68 @@ const schema = new mongoose.Schema(
   {
     timestamps: true,
     versionKey: false,
-  }
+  },
 );
 
-// Virtual
-schema.virtual("isLowStock").get(function () {
+// ===========================
+// Virtuals
+// ===========================
+
+productSchema.virtual("isLowStock").get(function () {
   return this.totalStock <= this.minimumStock;
 });
 
+// ===========================
 // Indexes
-schema.index({ store: 1, productCode: 1 }, { unique: true });
-schema.index({ store: 1, productName: 1 });
-schema.index({ store: 1, category: 1 });
-schema.index({ store: 1, brand: 1 });
+// ===========================
 
-schema.set("toJSON", { virtuals: true });
-schema.set("toObject", { virtuals: true });
+productSchema.index(
+  {
+    store: 1,
+    productCode: 1,
+  },
+  {
+    unique: true,
+  },
+);
 
-module.exports = mongoose.model("Product", schema);
+productSchema.index({
+  store: 1,
+  productName: 1,
+});
+
+productSchema.index({
+  store: 1,
+  category: 1,
+});
+
+productSchema.index({
+  store: 1,
+  brand: 1,
+});
+
+productSchema.index({
+  totalSold: -1,
+});
+
+productSchema.index({
+  totalSalesAmount: -1,
+});
+
+productSchema.index({
+  lastSoldDate: -1,
+});
+
+// ===========================
+// JSON
+// ===========================
+
+productSchema.set("toJSON", {
+  virtuals: true,
+});
+
+productSchema.set("toObject", {
+  virtuals: true,
+});
+
+module.exports = mongoose.model("Product", productSchema);
