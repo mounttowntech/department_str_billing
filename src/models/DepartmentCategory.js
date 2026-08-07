@@ -26,9 +26,23 @@ const schema = new mongoose.Schema(
       trim: true,
     },
 
-    description: String,
-    image: String,
-    icon: String,
+    description: {
+      type: String,
+      trim: true,
+    },
+
+    // Image uploaded from React frontend
+    imageURL: {
+      type: String,
+      trim: true,
+      default: null,
+    },
+
+    icon: {
+      type: String,
+      trim: true,
+      default: null,
+    },
 
     departmentType: {
       type: String,
@@ -83,8 +97,24 @@ const schema = new mongoose.Schema(
   }
 );
 
-schema.index({ store: 1, categoryCode: 1 }, { unique: true });
-schema.index({ store: 1, categoryName: 1 }, { unique: true });
-schema.index({ store: 1, departmentType: 1 });
+// Unique category code inside a store
+schema.index(
+  { store: 1, categoryCode: 1 },
+  { unique: true }
+);
 
-module.exports = mongoose.model("DepartmentCategory", schema);
+// Unique category name inside a store
+schema.index(
+  { store: 1, categoryName: 1 },
+  { unique: true }
+);
+
+schema.index({
+  store: 1,
+  departmentType: 1,
+});
+
+module.exports = mongoose.model(
+  "DepartmentCategory",
+  schema
+);

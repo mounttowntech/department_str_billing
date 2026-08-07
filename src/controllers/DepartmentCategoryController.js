@@ -2,8 +2,15 @@ const DepartmentCategory = require("../models/DepartmentCategory");
 
 exports.createDepartmentCategory = async (req, res) => {
   try {
+    const imageURL = req.file
+      ? `/uploads/categories/${req.file.filename}`
+      : null;
+
     const category = await DepartmentCategory.create({
       ...req.body,
+
+      imageURL,
+
       createdBy: req.user?.id,
     });
 
@@ -16,7 +23,8 @@ exports.createDepartmentCategory = async (req, res) => {
     if (error.code === 11000) {
       return res.status(400).json({
         success: false,
-        message: "Category code or category name already exists in this store",
+        message:
+          "Category code or category name already exists in this store",
       });
     }
 
@@ -26,7 +34,6 @@ exports.createDepartmentCategory = async (req, res) => {
     });
   }
 };
-
 exports.getAllDepartmentCategory = async (req, res) => {
   try {
     const { store, status, departmentType, search } = req.query;
