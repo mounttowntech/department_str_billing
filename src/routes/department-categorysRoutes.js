@@ -1,21 +1,51 @@
 const router = require("express").Router();
-
+const upload = require("../middleware/upload");
 const {
   createDepartmentCategory,
   getAllDepartmentCategory,
   getDepartmentCategoryById,
   updateDepartmentCategory,
+  toggleDepartmentCategory,
   deleteDepartmentCategory,
-  activateDepartmentCategory,
 } = require("../controllers/DepartmentCategoryController");
 
 const { verifyToken } = require("../middleware/authMiddleware");
 
-router.post("/create", verifyToken, createDepartmentCategory);
-router.get("/all", verifyToken, getAllDepartmentCategory);
-router.get("/:id", verifyToken, getDepartmentCategoryById);
-router.put("/update/:id", verifyToken, updateDepartmentCategory);
-router.patch("/activate/:id", verifyToken, activateDepartmentCategory);
-router.delete("/delete/:id", verifyToken, deleteDepartmentCategory);
+router.post(
+  "/create",
+  verifyToken,
+  upload.single("image"),
+  createDepartmentCategory
+);
+
+router.get(
+  "/all",
+  verifyToken,
+  getAllDepartmentCategory
+);
+
+router.get(
+  "/:id",
+  verifyToken,
+  getDepartmentCategoryById
+);
+
+router.put(
+  "/update/:id",
+  verifyToken,
+  upload.single("image"),
+  updateDepartmentCategory
+);
+router.patch(
+  "/toggle/:id",
+  verifyToken,
+  toggleDepartmentCategory
+);
+
+router.delete(
+  "/delete/:id",
+  verifyToken,
+  deleteDepartmentCategory
+);
 
 module.exports = router;

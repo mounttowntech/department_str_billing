@@ -54,6 +54,7 @@ app.use("/api/units", require("./src/routes/unitsRoutes"));
 app.use("/api/auth", require("./src/routes/authRoutes"));
 app.use("/api/users",require("./src/routes/userRoutes"));
 app.use("/api/warehouses", require("./src/routes/warehousesRoutes"));
+app.use("/uploads", express.static("uploads"));
 // app.use(errorMiddleware);
 
 module.exports = app;

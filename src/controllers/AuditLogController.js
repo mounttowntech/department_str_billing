@@ -4,10 +4,6 @@ const Store = require("../models/Store");
 
 const generateAuditLogNumber = require("../utils/generateAuditLogNumber");
 
-/* ======================================================
-   Create Audit Log
-====================================================== */
-
 exports.createAuditLog = async (req, res) => {
   try {
     const {
@@ -110,9 +106,6 @@ exports.createAuditLog = async (req, res) => {
   }
 };
 
-/* ======================================================
-   Get All Audit Logs
-====================================================== */
 
 exports.getAllAuditLog = async (req, res) => {
   try {
@@ -198,9 +191,6 @@ exports.getAllAuditLog = async (req, res) => {
   }
 };
 
-/* ======================================================
-   Get Audit Log By ID
-====================================================== */
 
 exports.getAuditLogById = async (req, res) => {
   try {
@@ -229,9 +219,6 @@ exports.getAuditLogById = async (req, res) => {
   }
 };
 
-/* ======================================================
-   Update Audit Log
-====================================================== */
 
 exports.updateAuditLog = async (req, res) => {
   try {
@@ -267,9 +254,6 @@ exports.updateAuditLog = async (req, res) => {
   }
 };
 
-/* ======================================================
-   Delete Audit Log
-====================================================== */
 
 exports.deleteAuditLog = async (req, res) => {
   try {
