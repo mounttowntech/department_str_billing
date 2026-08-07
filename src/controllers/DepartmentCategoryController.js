@@ -7,120 +7,14 @@ const DepartmentCategory = require("../models/DepartmentCategory");
 
 exports.createDepartmentCategory = async (req, res) => {
   try {
-    const {
-      store,
-      categoryCode,
-      categoryName,
-      displayName,
-      description,
-      image,
-      icon,
-      departmentType,
-      taxSetting,
-      displayOrder,
-      isFeatured,
-      allowDiscount,
-      allowReturn,
-    } = req.body;
-
-    // -----------------------------
-    // REQUIRED STORE
-    // -----------------------------
-
-    if (!store) {
-      return res.status(400).json({
-        success: false,
-        message: "Please select a store.",
-      });
-    }
-
-    if (!mongoose.Types.ObjectId.isValid(store)) {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid store ID.",
-      });
-    }
-
-    // -----------------------------
-    // REQUIRED FIELDS
-    // -----------------------------
-
-    if (!categoryCode?.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "Category code is required.",
-      });
-    }
-
-    if (!categoryName?.trim()) {
-      return res.status(400).json({
-        success: false,
-        message: "Category name is required.",
-      });
-    }
-
-    // -----------------------------
-    // TAX
-    // Empty tax = null
-    // -----------------------------
-
-    let validTaxSetting = null;
-
-    if (taxSetting) {
-      if (!mongoose.Types.ObjectId.isValid(taxSetting)) {
-        return res.status(400).json({
-          success: false,
-          message: "Invalid tax setting.",
-        });
-      }
-
-      validTaxSetting = taxSetting;
-    }
-
-    // -----------------------------
-    // CREATE
-    // -----------------------------
+    const imageURL = req.file
+      ? `/uploads/categories/${req.file.filename}`
+      : null;
 
     const category = await DepartmentCategory.create({
-      store,
+      ...req.body,
 
-      categoryCode: categoryCode.trim(),
-
-      categoryName: categoryName.trim(),
-
-      displayName:
-        displayName?.trim() ||
-        categoryName.trim(),
-
-      description:
-        description?.trim() || "",
-
-      image:
-        image?.trim() || "",
-
-      icon:
-        icon?.trim() || "",
-
-      departmentType:
-        departmentType || "department_store",
-
-      taxSetting: validTaxSetting,
-
-      displayOrder:
-        Number(displayOrder) || 1,
-
-      isFeatured:
-        Boolean(isFeatured),
-
-      allowDiscount:
-        allowDiscount !== undefined
-          ? Boolean(allowDiscount)
-          : true,
-
-      allowReturn:
-        allowReturn !== undefined
-          ? Boolean(allowReturn)
-          : true,
+      imageURL,
 
       createdBy: req.user?.id,
     });
@@ -157,7 +51,7 @@ exports.createDepartmentCategory = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "Category code or category name already exists in this store.",
+          "Category code or category name already exists in this store",
       });
     }
 
@@ -168,16 +62,7 @@ exports.createDepartmentCategory = async (req, res) => {
     
   }
 };
-
-
-// =====================================================
-// GET ALL CATEGORIES
-// =====================================================
-
-exports.getAllDepartmentCategory = async (
-  req,
-  res
-) => {
+exports.getAllDepartmentCategory = async (req, res) => {
   try {
 
     const {

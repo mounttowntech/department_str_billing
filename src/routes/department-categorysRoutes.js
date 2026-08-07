@@ -10,42 +10,15 @@ const {
 } = require("../controllers/DepartmentCategoryController");
 
 const { verifyToken } = require("../middleware/authMiddleware");
+const {
+  uploadCategoryImage,
+} = require("../middleware/uploadMiddleware");
 
-router.post(
-  "/create",
-  verifyToken,
-  upload.single("image"),
-  createDepartmentCategory
-);
-
-router.get(
-  "/all",
-  verifyToken,
-  getAllDepartmentCategory
-);
-
-router.get(
-  "/:id",
-  verifyToken,
-  getDepartmentCategoryById
-);
-
-router.put(
-  "/update/:id",
-  verifyToken,
-  upload.single("image"),
-  updateDepartmentCategory
-);
-router.patch(
-  "/toggle/:id",
-  verifyToken,
-  toggleDepartmentCategory
-);
-
-router.delete(
-  "/delete/:id",
-  verifyToken,
-  deleteDepartmentCategory
-);
+router.post("/create", verifyToken, uploadCategoryImage.single("image"),createDepartmentCategory);
+router.get("/all", verifyToken, getAllDepartmentCategory);
+router.get("/:id", verifyToken, getDepartmentCategoryById);
+router.put("/update/:id", verifyToken, updateDepartmentCategory);
+router.patch("/activate/:id", verifyToken, activateDepartmentCategory);
+router.delete("/delete/:id", verifyToken, deleteDepartmentCategory);
 
 module.exports = router;
