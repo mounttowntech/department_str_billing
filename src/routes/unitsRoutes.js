@@ -7,6 +7,7 @@ const {
   updateUnit,
   deleteUnit,
   activateUnit,
+  permanentDeleteUnit,
 } = require("../controllers/unitController");
 
 const { verifyToken } = require("../middleware/authMiddleware");
@@ -22,5 +23,7 @@ router.put("/update/:id", verifyToken, updateUnit);
 router.patch("/activate/:id", verifyToken, activateUnit);
 
 router.delete("/delete/:id", verifyToken, deleteUnit);
+
+router.delete("/permanent/:id", verifyToken, permanentDeleteUnit);
 
 module.exports = router;

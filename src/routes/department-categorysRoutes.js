@@ -1,12 +1,12 @@
 const router = require("express").Router();
-
+const upload = require("../middleware/upload");
 const {
   createDepartmentCategory,
   getAllDepartmentCategory,
   getDepartmentCategoryById,
   updateDepartmentCategory,
+  toggleDepartmentCategory,
   deleteDepartmentCategory,
-  activateDepartmentCategory,
 } = require("../controllers/DepartmentCategoryController");
 
 const { verifyToken } = require("../middleware/authMiddleware");

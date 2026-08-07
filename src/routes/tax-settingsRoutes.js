@@ -4,19 +4,15 @@ const router = express.Router();
 
 const taxController = require("../controllers/taxSettingController");
 
-// Create
-router.post("/create", taxController.createTaxSetting);
+const { verifyToken } = require("../middleware/authMiddleware");
 
-// Get All
-router.get("/all", taxController.getAllTaxSettings);
+router.post("/create", verifyToken, taxController.createTaxSetting);
 
-// Get By Id
-router.get("/:id", taxController.getTaxSettingById);
+router.get("/all", verifyToken, taxController.getAllTaxSettings);
 
-// Update
-router.put("/update/:id", taxController.updateTaxSetting);
+router.get("/:id", verifyToken, taxController.getTaxSettingById);
 
-// Delete
-router.delete("/delete/:id", taxController.deleteTaxSetting);
+router.put("/update/:id", verifyToken, taxController.updateTaxSetting);
 
+router.delete("/delete/:id", verifyToken, taxController.deleteTaxSetting);
 module.exports = router;

@@ -114,14 +114,7 @@ exports.updateUser = async (req, res) => {
 
 exports.deleteUser = async (req, res) => {
   try {
-    const user = await User.findByIdAndUpdate(
-      req.params.id,
-      {
-        status: "inactive",
-        updatedBy: req.user?.id,
-      },
-      { new: true }
-    ).select("-password");
+    const user = await User.findByIdAndDelete(req.params.id);
 
     if (!user) {
       return res.status(404).json({
@@ -132,14 +125,15 @@ exports.deleteUser = async (req, res) => {
 
     res.json({
       success: true,
-      message: "User deactivated successfully",
-      data: user,
+      message: "User deleted successfully",
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
-
 exports.blockUser = async (req, res) => {
   try {
     const user = await User.findByIdAndUpdate(
@@ -193,5 +187,28 @@ exports.activateUser = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+exports.deactivateUser = async (req, res) => {
+  try {
+    const user = await User.findByIdAndUpdate(
+      req.params.id,
+      {
+        status: "inactive",
+        updatedBy: req.user?.id,
+      },
+      { new: true }
+    ).select("-password");
+
+    res.json({
+      success: true,
+      message: "User deactivated",
+      data: user,
+    });
+  } catch (err) {
+    res.status(500).json({
+      success: false,
+      message: err.message,
+    });
   }
 };
