@@ -10,8 +10,11 @@ const {
 } = require("../controllers/DepartmentCategoryController");
 
 const { verifyToken } = require("../middleware/authMiddleware");
+const {
+  uploadCategoryImage,
+} = require("../middleware/uploadMiddleware");
 
-router.post("/create", verifyToken, createDepartmentCategory);
+router.post("/create", verifyToken, uploadCategoryImage.single("image"),createDepartmentCategory);
 router.get("/all", verifyToken, getAllDepartmentCategory);
 router.get("/:id", verifyToken, getDepartmentCategoryById);
 router.put("/update/:id", verifyToken, updateDepartmentCategory);
