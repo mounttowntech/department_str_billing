@@ -8,20 +8,33 @@ const {
   getAllDepartmentCategory,
   getDepartmentCategoryById,
   updateDepartmentCategory,
-   toggleDepartmentCategory,
+  toggleDepartmentCategory,
   deleteDepartmentCategory,
 } = require("../controllers/DepartmentCategoryController");
+
+
+const uploadCategoryFiles = uploadCategoryImage.fields([
+  { name: "image", maxCount: 1 },
+  { name: "icon", maxCount: 1 },
+]);
 
 router.post(
   "/create",
   verifyToken,
-  uploadCategoryImage.single("image"),
+  uploadCategoryFiles,
   createDepartmentCategory
 );
 
 router.get("/all", verifyToken, getAllDepartmentCategory);
 router.get("/:id", verifyToken, getDepartmentCategoryById);
-router.put("/update/:id", verifyToken, updateDepartmentCategory);
+
+router.put(
+  "/update/:id",
+  verifyToken,
+  uploadCategoryFiles,
+  updateDepartmentCategory
+);
+
 router.patch("/activate/:id", verifyToken, toggleDepartmentCategory);
 router.delete("/delete/:id", verifyToken, deleteDepartmentCategory);
 

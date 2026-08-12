@@ -5,8 +5,8 @@ const {
   getAllWarehouses,
   getWarehouseById,
   updateWarehouse,
+  toggleWarehouseStatus,
   deleteWarehouse,
-  activateWarehouse,
 } = require("../controllers/WarehouseController");
 
 const { verifyToken } = require("../middleware/authMiddleware");
@@ -15,7 +15,11 @@ router.post("/create", verifyToken, createWarehouse);
 router.get("/all", verifyToken, getAllWarehouses);
 router.get("/:id", verifyToken, getWarehouseById);
 router.put("/update/:id", verifyToken, updateWarehouse);
-router.patch("/activate/:id", verifyToken, activateWarehouse);
+
+// Same naming quirk as Category/Brand: mounted at /activate/:id even
+// though the handler flips active <-> inactive either way.
+router.patch("/activate/:id", verifyToken, toggleWarehouseStatus);
+
 router.delete("/delete/:id", verifyToken, deleteWarehouse);
 
 module.exports = router;

@@ -1,6 +1,27 @@
 const mongoose = require("mongoose");
 const DepartmentCategory = require("../models/DepartmentCategory");
 
+// Converts multer's actual on-disk file path into a public URL, based
+// on wherever "/uploads" appears in that path — this stays correct
+// even if the upload middleware writes into a subfolder (e.g.
+// uploads/misc/x.jpg or uploads/categories/x.jpg) instead of a flat
+// uploads/x.jpg, which is what was causing the 404s: the old code
+// assumed a flat path regardless of where multer actually put the file.
+const toPublicUrl = (file) => {
+  if (!file) return null;
+
+  const normalized = file.path.replace(/\\/g, "/");
+  const idx = normalized.indexOf("/uploads/");
+
+  if (idx === -1) {
+    // Fallback — shouldn't happen if UPLOAD_ROOT is under an "uploads"
+    // folder, but avoids crashing if it somehow isn't.
+    return `/uploads/${file.filename}`;
+  }
+
+  return normalized.slice(idx);
+};
+
 // =====================================================
 // CREATE CATEGORY
 // =====================================================
@@ -13,8 +34,6 @@ exports.createDepartmentCategory = async (req, res) => {
       categoryName,
       displayName,
       description,
-      image,
-      icon,
       departmentType,
       taxSetting,
       displayOrder,
@@ -78,6 +97,15 @@ exports.createDepartmentCategory = async (req, res) => {
     }
 
     // -----------------------------
+    // FILES
+    // req.files is populated by upload.fields([...]); each field is
+    // an array (maxCount: 1), so grab index 0 if present.
+    // -----------------------------
+
+    const imageFile = req.files?.image?.[0];
+    const iconFile = req.files?.icon?.[0];
+
+    // -----------------------------
     // CREATE
     // -----------------------------
 
@@ -95,11 +123,9 @@ exports.createDepartmentCategory = async (req, res) => {
       description:
         description?.trim() || "",
 
-      image:
-        image?.trim() || "",
+      imageURL: toPublicUrl(imageFile),
 
-      icon:
-        icon?.trim() || "",
+      icon: toPublicUrl(iconFile),
 
       departmentType:
         departmentType || "department_store",
@@ -333,14 +359,16 @@ exports.updateDepartmentCategory =
         categoryName,
         displayName,
         description,
-        image,
-        icon,
         departmentType,
         taxSetting,
         displayOrder,
         isFeatured,
         allowDiscount,
         allowReturn,
+        // Frontend sends these back so we know what to keep when no
+        // new file is uploaded for that particular field this time.
+        existingImageURL,
+        existingIcon,
       } = req.body;
 
       // -----------------------------
@@ -402,6 +430,13 @@ exports.updateDepartmentCategory =
       }
 
       // -----------------------------
+      // FILES
+      // -----------------------------
+
+      const imageFile = req.files?.image?.[0];
+      const iconFile = req.files?.icon?.[0];
+
+      // -----------------------------
       // UPDATE
       // -----------------------------
 
@@ -424,14 +459,16 @@ exports.updateDepartmentCategory =
             description:
               description?.trim() || "",
 
-            image: req.file
-  ? `/uploads/${req.file.filename}`
-  : "",
+            // Only overwrite if a new file came in this request;
+            // otherwise keep whatever was there before instead of
+            // wiping it to null.
+            imageURL: imageFile
+              ? toPublicUrl(imageFile)
+              : existingImageURL || null,
 
-            icon:
-  typeof icon === "string"
-    ? icon.trim()
-    : icon || "",
+            icon: iconFile
+              ? toPublicUrl(iconFile)
+              : existingIcon || null,
 
             departmentType:
               departmentType ||

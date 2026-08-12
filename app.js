@@ -13,9 +13,6 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.get("/", (req, res) => {
   res.json({ success: true, message: "Billing API running" });
 });
-// ==============================
-// Routes
-// ==============================
 
 app.use("/api/audit-logs", require("./src/routes/auditlogsRoutes"));
 app.use("/api/barcodes", require("./src/routes/barcodesRoutes"));

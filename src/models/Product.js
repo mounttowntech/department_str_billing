@@ -72,7 +72,7 @@ const productSchema = new mongoose.Schema(
       default: "",
     },
 
-    // Inventory Settings
+  
     isBatchRequired: {
       type: Boolean,
       default: false,
