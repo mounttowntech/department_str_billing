@@ -125,6 +125,7 @@ exports.updateUnit = async (req, res) => {
   }
 };
 
+// Soft delete — deactivates the unit, keeps the record.
 exports.deleteUnit = async (req, res) => {
   try {
     const unit = await Unit.findByIdAndUpdate(
@@ -180,6 +181,46 @@ exports.activateUnit = async (req, res) => {
     res.json({
       success: true,
       message: "Unit activated successfully",
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
+// Hard delete — actually removes the document.
+exports.permanentDeleteUnit = async (req, res) => {
+  try {
+    const unit = await Unit.findById(req.params.id);
+
+    if (!unit) {
+      return res.status(404).json({
+        success: false,
+        message: "Unit not found",
+      });
+    }
+
+    // ⚠️ Optional but recommended: block deletion if the unit is still
+    // referenced by a Product, the same way RolePermissionController
+    // blocks deleting a role that's still assigned to users. Uncomment
+    // and adjust the field name to match your actual Product schema:
+    //
+    // const Product = require("../models/Product");
+    // const inUse = await Product.findOne({ unit: unit._id });
+    // if (inUse) {
+    //   return res.status(400).json({
+    //     success: false,
+    //     message: "Unit is used by one or more products. Cannot delete.",
+    //   });
+    // }
+
+    await unit.deleteOne();
+
+    res.json({
+      success: true,
+      message: "Unit deleted permanently",
     });
   } catch (error) {
     res.status(500).json({

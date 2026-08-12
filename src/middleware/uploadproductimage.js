@@ -2,8 +2,11 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
+// Same folder-depth convention as uploadCategoryImage.js / uploadBrandLogo.js.
+// If this file lives somewhere other than src/middleware/, adjust
+// "../../uploads/products" to point at your project's real /uploads root.
+const uploadDir = path.join(__dirname, "../../uploads/products");
 
-const uploadDir = path.join(__dirname, "../../uploads/categories");
 // Create folder if it doesn't exist
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, {
@@ -48,7 +51,7 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-const uploadCategoryImage = multer({
+const uploadProductImage = multer({
   storage,
   fileFilter,
   limits: {
@@ -57,5 +60,5 @@ const uploadCategoryImage = multer({
 });
 
 module.exports = {
-  uploadCategoryImage,
+  uploadProductImage,
 };

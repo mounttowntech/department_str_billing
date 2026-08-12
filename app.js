@@ -13,9 +13,6 @@ app.use("/uploads", express.static(path.join(__dirname, "uploads")));
 app.get("/", (req, res) => {
   res.json({ success: true, message: "Billing API running" });
 });
-// ==============================
-// Routes
-// ==============================
 
 app.use("/api/audit-logs", require("./src/routes/auditlogsRoutes"));
 app.use("/api/barcodes", require("./src/routes/barcodesRoutes"));
@@ -54,6 +51,7 @@ app.use("/api/units", require("./src/routes/unitsRoutes"));
 app.use("/api/auth", require("./src/routes/authRoutes"));
 app.use("/api/users",require("./src/routes/userRoutes"));
 app.use("/api/warehouses", require("./src/routes/warehousesRoutes"));
+app.use("/uploads", express.static("uploads"));
 // app.use(errorMiddleware);
 
 module.exports = app;
