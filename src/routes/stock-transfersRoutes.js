@@ -1,6 +1,6 @@
 const router = require("express").Router();
 const controller = require("../controllers/StockTransferController");
-
+const {verifyToken} =require("../middleware/authMiddleware");
 // Create Stock Transfer
 router.post(
   "/create",
@@ -34,6 +34,7 @@ router.patch(
 // Delete Stock Transfer
 router.delete(
   "/delete/:id",
+  verifyToken,
   controller.deleteStockTransferById
 );
 

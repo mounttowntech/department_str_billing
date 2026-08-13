@@ -180,41 +180,29 @@ exports.updatePurchase = async (req, res) => {
 ================================ */
 
 exports.deletePurchase = async (req, res) => {
-
   try {
-
-    const purchase = await Purchase.findByIdAndUpdate(
-      req.params.id,
-      {
-        isDeleted: true,
-        updatedBy: req.user?._id || req.user?.id,
-      },
-      {
-        new: true,
-      }
-    );
+    const purchase = await Purchase.findByIdAndDelete(req.params.id);
 
     if (!purchase) {
-
       return res.status(404).json({
         success: false,
         message: "Purchase not found",
       });
-
     }
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: "Purchase deleted successfully",
+      data: purchase,
     });
-
   } catch (error) {
+    console.error("Delete purchase error:", error);
 
-    res.status(500).json({
+    return res.status(500).json({
       success: false,
-      message: error.message,
+      message: "Failed to delete purchase",
+      error: error.message,
     });
-
   }
 };
 

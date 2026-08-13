@@ -1,7 +1,7 @@
 const router = require("express").Router();
 
 const controller = require("../controllers/StockLedgerController");
-
+const {verifyToken} = require("../middleware/authMiddleware");
 // Create
 router.post(
   "/create",
@@ -29,6 +29,7 @@ router.put(
 // Delete
 router.delete(
   "/delete/:id",
+  verifyToken,
   controller.deleteStockLedgerById
 );
 

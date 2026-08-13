@@ -1099,10 +1099,34 @@ exports.deleteSalesReturn = async (req, res) => {
   const session = await mongoose.startSession();
 
   try {
+    // ==========================================================
+    // START TRANSACTION
+    // ==========================================================
+
     session.startTransaction();
 
+    const { id } = req.params;
+
+    // ==========================================================
+    // VALIDATE SALES RETURN ID
+    // ==========================================================
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      await session.abortTransaction();
+      session.endSession();
+
+      return res.status(400).json({
+        success: false,
+        message: "Invalid Sales Return ID",
+      });
+    }
+
+    // ==========================================================
+    // FIND ACTIVE SALES RETURN
+    // ==========================================================
+
     const salesReturn = await SalesReturn.findOne({
-      _id: req.params.id,
+      _id: id,
       isDeleted: false,
     }).session(session);
 
@@ -1112,120 +1136,308 @@ exports.deleteSalesReturn = async (req, res) => {
 
       return res.status(404).json({
         success: false,
-        message: "Sales Return not found",
+        message: "Sales Return not found or already deleted",
       });
     }
 
-    /* ==========================
-       Restore Stock
-    ========================== */
+    // ==========================================================
+    // VALIDATE ITEMS
+    // ==========================================================
+
+    if (
+      !Array.isArray(salesReturn.items) ||
+      salesReturn.items.length === 0
+    ) {
+      await session.abortTransaction();
+      session.endSession();
+
+      return res.status(400).json({
+        success: false,
+        message: "Sales Return does not contain any items",
+      });
+    }
+
+    // ==========================================================
+    // RESTORE / REVERSE STOCK
+    //
+    // Sales Return creation:
+    //     Stock + returned quantity
+    //
+    // Sales Return deletion:
+    //     Stock - returned quantity
+    // ==========================================================
 
     for (const item of salesReturn.items) {
-      // Product
-      await Product.findByIdAndUpdate(
-        item.product,
-        {
-          $inc: {
-            totalStock: -Number(item.quantity),
-          },
-        },
-        { session }
-      );
+      const quantity = Number(item.quantity);
 
-      // Variant
-      if (item.variant) {
-        await ProductVariant.findByIdAndUpdate(
-          item.variant,
-          {
-            $inc: {
-              currentStock: -Number(item.quantity),
-            },
-          },
-          { session }
+      // --------------------------------------------------------
+      // Validate quantity
+      // --------------------------------------------------------
+
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        throw new Error(
+          `Invalid quantity in sales return item: ${
+            item.productName || item.product
+          }`
         );
       }
 
-      // Batch
+      // ========================================================
+      // PRODUCT
+      // ========================================================
+
+      if (item.product) {
+        const product = await Product.findById(
+          item.product
+        ).session(session);
+
+        if (!product) {
+          throw new Error(
+            `Product not found: ${item.product}`
+          );
+        }
+
+        const currentStock =
+          Number(product.totalStock) || 0;
+
+        // Prevent negative stock
+        if (currentStock < quantity) {
+          throw new Error(
+            `Insufficient product stock to delete sales return for ${
+              item.productName || item.product
+            }. Current stock: ${currentStock}, required: ${quantity}`
+          );
+        }
+
+        product.totalStock =
+          currentStock - quantity;
+
+        await product.save({
+          session,
+        });
+      }
+
+      // ========================================================
+      // VARIANT
+      // ========================================================
+
+      if (item.variant) {
+        const variant = await ProductVariant.findById(
+          item.variant
+        ).session(session);
+
+        if (!variant) {
+          throw new Error(
+            `Product variant not found: ${item.variant}`
+          );
+        }
+
+        const currentStock =
+          Number(variant.currentStock) || 0;
+
+        // Prevent negative stock
+        if (currentStock < quantity) {
+          throw new Error(
+            `Insufficient variant stock to delete sales return. Current stock: ${currentStock}, required: ${quantity}`
+          );
+        }
+
+        variant.currentStock =
+          currentStock - quantity;
+
+        await variant.save({
+          session,
+        });
+      }
+
+      // ========================================================
+      // BATCH
+      // ========================================================
+
       if (item.batch) {
-        await Batch.findByIdAndUpdate(
-          item.batch,
-          {
-            $inc: {
-              remainingQuantity: -Number(item.quantity),
-            },
-          },
-          { session }
-        );
+        const batch = await Batch.findById(
+          item.batch
+        ).session(session);
+
+        if (!batch) {
+          throw new Error(
+            `Batch not found: ${item.batch}`
+          );
+        }
+
+        const currentQuantity =
+          Number(batch.remainingQuantity) || 0;
+
+        // Prevent negative batch quantity
+        if (currentQuantity < quantity) {
+          throw new Error(
+            `Insufficient batch quantity to delete sales return. Current quantity: ${currentQuantity}, required: ${quantity}`
+          );
+        }
+
+        batch.remainingQuantity =
+          currentQuantity - quantity;
+
+        await batch.save({
+          session,
+        });
       }
     }
 
-    /* ==========================
-       Soft Delete
-    ========================== */
+    // ==========================================================
+    // GET USER
+    // ==========================================================
 
-    salesReturn.isDeleted = true;
-    salesReturn.deletedAt = new Date();
+    const userId =
+      req.user?._id ||
+      req.user?.id ||
+      null;
 
-    await salesReturn.save({ session });
+    // ==========================================================
+    // SOFT DELETE SALES RETURN
+    // ==========================================================
 
-    /* ==========================
-       Update Invoice Return Status
-    ========================== */
+    await SalesReturn.updateOne(
+      {
+        _id: salesReturn._id,
+        isDeleted: false,
+      },
+      {
+        $set: {
+          isDeleted: true,
+          deletedAt: new Date(),
+          deletedBy: userId,
+          updatedBy: userId,
+        },
+      },
+      {
+        session,
+      }
+    );
 
-    const invoice = await SalesInvoice.findById(
-      salesReturn.invoice
-    ).session(session);
+    // ==========================================================
+    // UPDATE SALES INVOICE RETURN STATUS
+    // ==========================================================
 
-    if (invoice) {
-      let totalInvoiceQty = 0;
-      let returnedQty = 0;
-
-      invoice.items.forEach((item) => {
-        totalInvoiceQty += Number(item.quantity);
-      });
-
-      const activeReturns = await SalesReturn.find({
-        invoice: invoice._id,
+    if (salesReturn.invoice) {
+      const invoice = await SalesInvoice.findOne({
+        _id: salesReturn.invoice,
         isDeleted: false,
       }).session(session);
 
-      activeReturns.forEach((ret) => {
-        ret.items.forEach((item) => {
-          returnedQty += Number(item.quantity);
-        });
-      });
+      if (invoice) {
+        // ------------------------------------------------------
+        // Calculate total invoice quantity
+        // ------------------------------------------------------
 
-      let status = "none";
+        let totalInvoiceQty = 0;
 
-      if (returnedQty === 0) {
-        status = "none";
-      } else if (returnedQty < totalInvoiceQty) {
-        status = "partial";
-      } else {
-        status = "returned";
+        for (const invoiceItem of invoice.items) {
+          totalInvoiceQty += Number(
+            invoiceItem.quantity || 0
+          );
+        }
+
+        // ------------------------------------------------------
+        // Get remaining ACTIVE sales returns
+        //
+        // Current deleted return is already marked deleted,
+        // therefore it won't be included.
+        // ------------------------------------------------------
+
+        const activeReturns = await SalesReturn.find({
+          invoice: invoice._id,
+          isDeleted: false,
+        }).session(session);
+
+        let returnedQty = 0;
+
+        for (const activeReturn of activeReturns) {
+          for (const returnItem of activeReturn.items) {
+            returnedQty += Number(
+              returnItem.quantity || 0
+            );
+          }
+        }
+
+        // ------------------------------------------------------
+        // Determine invoice return status
+        // ------------------------------------------------------
+
+        let returnStatus = "None";
+
+        if (returnedQty === 0) {
+          returnStatus = "None";
+        } else if (returnedQty < totalInvoiceQty) {
+          returnStatus = "Partial";
+        } else {
+          returnStatus = "Returned";
+        }
+
+        // ------------------------------------------------------
+        // Update invoice
+        // ------------------------------------------------------
+
+        await SalesInvoice.updateOne(
+          {
+            _id: invoice._id,
+          },
+          {
+            $set: {
+              returnStatus: returnStatus,
+              updatedBy: userId,
+            },
+          },
+          {
+            session,
+          }
+        );
       }
-
-      invoice.returnStatus = status;
-
-      await invoice.save({ session });
     }
 
+    // ==========================================================
+    // COMMIT TRANSACTION
+    // ==========================================================
+
     await session.commitTransaction();
+
     session.endSession();
+
+    // ==========================================================
+    // SUCCESS RESPONSE
+    // ==========================================================
 
     return res.status(200).json({
       success: true,
       message: "Sales Return deleted successfully",
+      data: {
+        salesReturnId: salesReturn._id,
+        returnNo: salesReturn.returnNo || null,
+        invoiceId: salesReturn.invoice || null,
+        deletedAt: new Date(),
+      },
     });
   } catch (error) {
-    await session.abortTransaction();
+    // ==========================================================
+    // ROLLBACK
+    // ==========================================================
+
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+
     session.endSession();
 
-    console.error("Delete Sales Return Error:", error);
+    console.error(
+      "Delete Sales Return Error:",
+      error
+    );
 
     return res.status(500).json({
       success: false,
-      message: error.message,
+      message:
+        error.message ||
+        "Failed to delete Sales Return",
     });
   }
 };

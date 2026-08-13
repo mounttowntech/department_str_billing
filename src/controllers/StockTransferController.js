@@ -290,27 +290,130 @@ exports.updateStockTransferById = asyncHandler(async (req, res) => {
   return success(res, "Stock transfer updated successfully.", data);
 });
 
+
+
+
+
 exports.deleteStockTransferById = asyncHandler(async (req, res) => {
-  const transfer = await StockTransfer.findById(req.params.id);
 
-  if (!transfer) {
-    return res.status(404).json({
-      success: false,
-      message: "Stock transfer not found.",
-    });
-  }
+const { id } = req.params;
 
-  // Prevent deleting completed transfers
-  if (transfer.status === "completed") {
-    return res.status(400).json({
-      success: false,
-      message: "Completed stock transfers cannot be deleted.",
-    });
-  }
+// ==========================================================
+// VALIDATE ID
+// ==========================================================
 
-  await StockTransfer.findByIdAndDelete(req.params.id);
+if (!mongoose.Types.ObjectId.isValid(id)) {
+  return res.status(400).json({
+    success: false,
+    message: "Invalid Stock Transfer ID",
+  });
+}
 
-  return success(res, "Stock transfer deleted successfully.");
+// ==========================================================
+// AUTHENTICATED USER
+// ==========================================================
+
+const userId =
+  req.user?.id ||
+  req.user?._id ||
+  req.user?.userId;
+
+if (!userId) {
+  return res.status(401).json({
+    success: false,
+    message: "Authenticated user not found",
+  });
+}
+
+// ==========================================================
+// FIND STOCK TRANSFER
+// ==========================================================
+
+const transfer =
+  await StockTransfer.findOne({
+    _id: id,
+    isDeleted: {
+      $ne: true,
+    },
+  });
+
+if (!transfer) {
+  return res.status(404).json({
+    success: false,
+    message:
+      "Stock transfer not found or already deleted.",
+  });
+}
+
+// ==========================================================
+// SOFT DELETE
+// ==========================================================
+
+const deletedAt = new Date();
+
+const deletedTransfer =
+  await StockTransfer.findOneAndUpdate(
+    {
+      _id: id,
+      isDeleted: {
+        $ne: true,
+      },
+    },
+    {
+      $set: {
+        isDeleted: true,
+        deletedAt: deletedAt,
+        deletedBy: userId,
+      },
+    },
+    {
+      returnDocument: "after",
+      runValidators: false,
+    }
+  );
+
+// ==========================================================
+// CHECK DELETE
+// ==========================================================
+
+if (!deletedTransfer) {
+  return res.status(404).json({
+    success: false,
+    message:
+      "Stock transfer not found or already deleted.",
+  });
+}
+
+// ==========================================================
+// SUCCESS
+// ==========================================================
+
+return res.status(200).json({
+  success: true,
+  message:
+    "Stock transfer deleted successfully.",
+
+  data: {
+    transferId:
+      deletedTransfer._id,
+
+    transferNo:
+      deletedTransfer.transferNo,
+
+    status:
+      deletedTransfer.status,
+
+    isDeleted:
+      deletedTransfer.isDeleted,
+
+    deletedAt:
+      deletedTransfer.deletedAt,
+
+    deletedBy:
+      deletedTransfer.deletedBy,
+  },
+});
+
 });
 
 

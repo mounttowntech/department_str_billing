@@ -1,8 +1,13 @@
 const ProductVariant = require("../models/ProductVariant");
 const Batch = require("../models/Batch");
 const Product = require("../models/Product");
+
 const stockCalculation = require("../utils/stockCalculation");
 const createStockLedger = require("../utils/createStockLedger");
+
+// ============================================================
+// MOVE STOCK
+// ============================================================
 
 exports.moveStock = async ({
   variantId,
@@ -17,21 +22,83 @@ exports.moveStock = async ({
   createdBy,
   remarks,
   allowNegative = false,
+  session = null,
 }) => {
-  // Get Product Variant
-  const variant = await ProductVariant.findById(variantId).populate("product");
+  // ==========================================================
+  // VALIDATE VARIANT ID
+  // ==========================================================
 
-  if (!variant) {
-    throw new Error("Product variant not found");
+  if (!variantId) {
+    throw new Error("Product variant ID is required");
   }
 
-  // Calculate Variant Stock
-  const { beforeStock, afterStock } = stockCalculation(
-    variant.currentStock,
-    quantity,
+  // ==========================================================
+  // VALIDATE QUANTITY
+  // ==========================================================
+
+  const qty = Number(quantity);
+
+  if (!Number.isFinite(qty) || qty <= 0) {
+    throw new Error("Invalid stock quantity");
+  }
+
+  // ==========================================================
+  // FIND PRODUCT VARIANT
+  // ==========================================================
+
+  let variantQuery = ProductVariant.findById(variantId).populate(
+    "product"
+  );
+
+  if (session) {
+    variantQuery = variantQuery.session(session);
+  }
+
+  const variant = await variantQuery;
+
+  // ==========================================================
+  // VARIANT NOT FOUND
+  // ==========================================================
+
+  if (!variant) {
+    throw new Error(
+      `Product variant not found: ${variantId}`
+    );
+  }
+
+  // ==========================================================
+  // PRODUCT NOT FOUND
+  // ==========================================================
+
+  if (!variant.product) {
+    throw new Error(
+      `Product not found for variant: ${variant._id}`
+    );
+  }
+
+  // ==========================================================
+  // PRODUCT ID
+  // ==========================================================
+
+  const productId = variant.product._id;
+
+  // ==========================================================
+  // CALCULATE VARIANT STOCK
+  // ==========================================================
+
+  const {
+    beforeStock,
+    afterStock,
+  } = stockCalculation(
+    Number(variant.currentStock || 0),
+    qty,
     operation,
     allowNegative
   );
+
+  // ==========================================================
+  // UPDATE VARIANT STOCK
+  // ==========================================================
 
   variant.currentStock = afterStock;
 
@@ -39,39 +106,78 @@ exports.moveStock = async ({
     variant.warehouse = warehouse;
   }
 
-  await variant.save();
-
-  // Update Batch Stock
-  if (batchId) {
-    const batch = await Batch.findById(batchId);
-
-    if (batch) {
-      const batchStock = stockCalculation(
-        batch.remainingQuantity,
-        quantity,
-        operation,
-        allowNegative
-      );
-
-      batch.remainingQuantity = batchStock.afterStock;
-
-      await batch.save();
-    }
-  }
-
-  // Recalculate Total Product Stock
-  const variants = await ProductVariant.find({
-    product: variant.product._id,
+  await variant.save({
+    session,
   });
 
+  // ==========================================================
+  // UPDATE BATCH STOCK
+  // ==========================================================
+
+  if (batchId) {
+    let batchQuery = Batch.findById(batchId);
+
+    if (session) {
+      batchQuery = batchQuery.session(session);
+    }
+
+    const batch = await batchQuery;
+
+    // --------------------------------------------------------
+    // BATCH NOT FOUND
+    // --------------------------------------------------------
+
+    if (!batch) {
+      throw new Error(
+        `Batch not found: ${batchId}`
+      );
+    }
+
+    // --------------------------------------------------------
+    // CALCULATE BATCH STOCK
+    // --------------------------------------------------------
+
+    const batchStock = stockCalculation(
+      Number(batch.remainingQuantity || 0),
+      qty,
+      operation,
+      allowNegative
+    );
+
+    batch.remainingQuantity =
+      batchStock.afterStock;
+
+    await batch.save({
+      session,
+    });
+  }
+
+  // ==========================================================
+  // RECALCULATE TOTAL PRODUCT STOCK
+  // ==========================================================
+
+  let variantsQuery = ProductVariant.find({
+    product: productId,
+  });
+
+  if (session) {
+    variantsQuery = variantsQuery.session(session);
+  }
+
+  const variants = await variantsQuery;
+
   const totalStock = variants.reduce(
-    (sum, item) => sum + Number(item.currentStock || 0),
+    (sum, item) =>
+      sum + Number(item.currentStock || 0),
     0
   );
 
-  // Update Product Total Stock
-  await Product.findByIdAndUpdate(
-    variant.product._id,
+  // ==========================================================
+  // UPDATE PRODUCT TOTAL STOCK
+  // ==========================================================
+
+  const productUpdate = await Product.findByIdAndUpdate(
+    productId,
     {
       $set: {
         totalStock,
@@ -79,20 +185,30 @@ exports.moveStock = async ({
     },
     {
       new: true,
+      session,
     }
   );
 
-  // Create Stock Ledger Entry
+  if (!productUpdate) {
+    throw new Error(
+      `Product not found: ${productId}`
+    );
+  }
+
+  // ==========================================================
+  // CREATE STOCK LEDGER
+  // ==========================================================
+
   await createStockLedger({
     store,
     warehouse,
     batch: batchId,
-    product: variant.product._id,
+    product: productId,
     variant: variant._id,
     skuCode: variant.skuCode,
     barcode: variant.barcode,
     movementType: operation,
-    quantity,
+    quantity: qty,
     beforeStock,
     afterStock,
     referenceId,
@@ -100,10 +216,16 @@ exports.moveStock = async ({
     referenceNumber,
     createdBy,
     remarks,
+    session,
   });
+
+  // ==========================================================
+  // RETURN
+  // ==========================================================
 
   return {
     variant,
+    productId,
     beforeStock,
     afterStock,
   };

@@ -1,7 +1,7 @@
 const StockLedger = require("../models/StockLedger");
 const asyncHandler = require("../utils/asyncHandler");
 const response = require("../utils/responseHandler");
-
+const mongoose=require("mongoose");
 const success = response.success;
 
 exports.createStockLedger = asyncHandler(async (req, res) => {
@@ -282,15 +282,131 @@ exports.updateStockLedgerById = asyncHandler(async (req, res) => {
 
   success(res, "Stock ledger updated successfully.", data);
 });
-exports.deleteStockLedgerById = asyncHandler(async (req, res) => {
-  const data = await StockLedger.findByIdAndDelete(req.params.id);
 
-  if (!data) {
-    return res.status(404).json({
-      success: false,
-      message: "Stock ledger not found.",
-    });
-  }
 
-  success(res, "Stock ledger deleted successfully.");
+
+
+
+
+exports.deleteStockLedgerById = asyncHandler(async (req, res) => {const { id } = req.params;
+
+// ==========================================================
+// VALIDATE ID
+// ==========================================================
+
+if (!mongoose.Types.ObjectId.isValid(id)) {
+  return res.status(400).json({
+    success: false,
+    message: "Invalid Stock Ledger ID",
+  });
+}
+
+// ==========================================================
+// GET LOGGED-IN USER
+// ==========================================================
+
+const userId =
+  req.user?.id ||
+  req.user?._id ||
+  req.user?.userId;
+
+if (!userId) {
+  console.log(
+    "StockLedger Delete - req.user:",
+    req.user
+  );
+
+  return res.status(401).json({
+    success: false,
+    message: "Authenticated user not found",
+  });
+}
+
+// ==========================================================
+// FIND STOCK LEDGER
+// ==========================================================
+
+const ledger = await StockLedger.findById(id);
+
+if (!ledger) {
+  return res.status(404).json({
+    success: false,
+    message: "Stock ledger not found",
+  });
+}
+
+// ==========================================================
+// CHECK ALREADY DELETED
+// ==========================================================
+
+if (ledger.isDeleted === true) {
+  return res.status(400).json({
+    success: false,
+    message: "Stock ledger already deleted",
+  });
+}
+
+// ==========================================================
+// SOFT DELETE
+// ==========================================================
+
+const deletedAt = new Date();
+
+const updatedLedger =
+  await StockLedger.findOneAndUpdate(
+    {
+      _id: id,
+      isDeleted: {
+        $ne: true,
+      },
+    },
+    {
+      $set: {
+        isDeleted: true,
+        deletedAt: deletedAt,
+        deletedBy: userId,
+      },
+    },
+    {
+      new: true,
+      runValidators: false,
+    }
+  );
+
+// ==========================================================
+// CHECK UPDATE
+// ==========================================================
+
+if (!updatedLedger) {
+  return res.status(404).json({
+    success: false,
+    message:
+      "Stock ledger not found or already deleted",
+  });
+}
+
+// ==========================================================
+// SUCCESS
+// ==========================================================
+
+return res.status(200).json({
+  success: true,
+  message: "Stock ledger deleted successfully",
+  data: {
+    ledgerId: updatedLedger._id,
+    referenceNumber:
+      updatedLedger.referenceNumber,
+    movementType:
+      updatedLedger.movementType,
+    quantity:
+      updatedLedger.quantity,
+    isDeleted:
+      updatedLedger.isDeleted,
+    deletedAt:
+      updatedLedger.deletedAt,
+    deletedBy:
+      updatedLedger.deletedBy,
+  },
+});
+
 });
