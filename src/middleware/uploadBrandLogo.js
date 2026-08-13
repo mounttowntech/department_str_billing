@@ -2,8 +2,11 @@ const multer = require("multer");
 const path = require("path");
 const fs = require("fs");
 
+// NOTE: matches the same folder depth as uploadCategoryImage.js.
+// If this file lives in a different folder than your category one,
+// adjust "../../uploads/brands" to point at the same root /uploads folder.
+const uploadDir = path.join(__dirname, "../../uploads/brands");
 
-const uploadDir = path.join(__dirname, "../../uploads/categories");
 // Create folder if it doesn't exist
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, {
@@ -48,7 +51,7 @@ const fileFilter = (req, file, cb) => {
   }
 };
 
-const uploadCategoryImage = multer({
+const uploadBrandLogo = multer({
   storage,
   fileFilter,
   limits: {
@@ -57,5 +60,5 @@ const uploadCategoryImage = multer({
 });
 
 module.exports = {
-  uploadCategoryImage,
+  uploadBrandLogo,
 };

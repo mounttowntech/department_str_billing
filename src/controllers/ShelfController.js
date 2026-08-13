@@ -133,16 +133,14 @@ exports.updateShelf = async (req, res) => {
   }
 };
 
-exports.deleteShelf = async (req, res) => {
+// Single toggle button. Shelf has THREE statuses (active/inactive/maintenance),
+// but the shield button only ever flips between active <-> inactive for a
+// quick one-click action. If a shelf is in "maintenance", clicking the
+// button brings it straight to "active" (maintenance is meant to be set
+// explicitly from the edit form's status dropdown, not toggled into).
+exports.toggleShelfStatus = async (req, res) => {
   try {
-    const shelf = await Shelf.findByIdAndUpdate(
-      req.params.id,
-      {
-        status: "inactive",
-        updatedBy: req.user?.id,
-      },
-      { new: true }
-    );
+    const shelf = await Shelf.findById(req.params.id);
 
     if (!shelf) {
       return res.status(404).json({
@@ -151,9 +149,13 @@ exports.deleteShelf = async (req, res) => {
       });
     }
 
+    shelf.status = shelf.status === "active" ? "inactive" : "active";
+    shelf.updatedBy = req.user?.id;
+    await shelf.save();
+
     res.json({
       success: true,
-      message: "Shelf deactivated successfully",
+      message: `Shelf ${shelf.status === "active" ? "activated" : "deactivated"} successfully`,
       data: shelf,
     });
   } catch (error) {
@@ -164,16 +166,10 @@ exports.deleteShelf = async (req, res) => {
   }
 };
 
-exports.activateShelf = async (req, res) => {
+// Permanent delete — removes the document entirely
+exports.deleteShelf = async (req, res) => {
   try {
-    const shelf = await Shelf.findByIdAndUpdate(
-      req.params.id,
-      {
-        status: "active",
-        updatedBy: req.user?.id,
-      },
-      { new: true }
-    );
+    const shelf = await Shelf.findByIdAndDelete(req.params.id);
 
     if (!shelf) {
       return res.status(404).json({
@@ -184,7 +180,7 @@ exports.activateShelf = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Shelf activated successfully",
+      message: "Shelf permanently deleted",
       data: shelf,
     });
   } catch (error) {
