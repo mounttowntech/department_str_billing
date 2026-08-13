@@ -752,108 +752,223 @@ exports.updateSalesInvoice = async (req, res) => {
     });
   }
 };
-exports.deleteSalesInvoice = async (req, res) => {
-  const session = await mongoose.startSession();
 
-  try {
-    session.startTransaction();
 
-    const invoice = await SalesInvoice.findOne({
-      _id: req.params.id,
-      isDeleted: false,
-    }).session(session);
+// ============================================================// DELETE SALES INVOICE// ============================================================
 
-    if (!invoice) {
-      await session.abortTransaction();
+exports.deleteSalesInvoice = async (req, res) => {const session = await mongoose.startSession();
 
-      session.endSession();
+try {// ==========================================================// START TRANSACTION// ==========================================================
 
-      return res.status(404).json({
-        success: false,
-        message: "Sales Invoice not found",
-      });
+session.startTransaction();
+
+const { id } = req.params;
+
+// ==========================================================
+// VALIDATE ID
+// ==========================================================
+
+if (!mongoose.Types.ObjectId.isValid(id)) {
+  await session.abortTransaction();
+  session.endSession();
+
+  return res.status(400).json({
+    success: false,
+    message: "Invalid Sales Invoice ID",
+  });
+}
+
+// ==========================================================
+// FIND ACTIVE SALES INVOICE
+// ==========================================================
+
+const invoice = await SalesInvoice.findOne({
+  _id: id,
+  isDeleted: false,
+}).session(session);
+
+if (!invoice) {
+  await session.abortTransaction();
+  session.endSession();
+
+  return res.status(404).json({
+    success: false,
+    message: "Sales Invoice not found or already deleted",
+  });
+}
+
+// ==========================================================
+// VALIDATE ITEMS
+// ==========================================================
+
+if (!invoice.items || invoice.items.length === 0) {
+  await session.abortTransaction();
+  session.endSession();
+
+  return res.status(400).json({
+    success: false,
+    message: "Sales Invoice does not contain any items",
+  });
+}
+
+// ==========================================================
+// RESTORE STOCK
+// ==========================================================
+
+for (const item of invoice.items) {
+  const quantity = Number(item.quantity);
+
+  // --------------------------------------------------------
+  // Validate quantity
+  // --------------------------------------------------------
+
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    throw new Error(
+      `Invalid quantity in invoice item: ${item.productName}`
+    );
+  }
+
+  // ========================================================
+  // PRODUCT STOCK
+  // ========================================================
+
+  if (item.product) {
+    const product = await Product.findById(item.product).session(
+      session
+    );
+
+    if (!product) {
+      throw new Error(
+        `Product not found: ${item.product}`
+      );
     }
 
-    /* ===========================================
-       RESTORE PRODUCT STOCK
-    =========================================== */
+    product.totalStock =
+      (Number(product.totalStock) || 0) + quantity;
 
-    for (const item of invoice.items) {
-      /* ---------- Product ---------- */
-
-      const product = await Product.findById(item.product).session(session);
-
-      if (product) {
-        product.totalStock += Number(item.quantity);
-
-        await product.save({ session });
-      }
-
-      /* ---------- Variant ---------- */
-
-      if (item.variant) {
-        const variant = await ProductVariant.findById(item.variant).session(
-          session,
-        );
-
-        if (variant) {
-          variant.currentStock += Number(item.quantity);
-
-          await variant.save({ session });
-        }
-      }
-
-      /* ---------- Batch ---------- */
-
-      if (item.batch) {
-        const batch = await Batch.findById(item.batch).session(session);
-
-        if (batch) {
-          batch.remainingQuantity += Number(item.quantity);
-
-          await batch.save({ session });
-        }
-      }
-    }
-
-    /* ===========================================
-       SOFT DELETE
-    =========================================== */
-
-    invoice.isDeleted = true;
-
-    invoice.updatedBy = req.user?._id || req.user?.id;
-
-    await invoice.save({ session });
-
-    /* ===========================================
-       COMMIT
-    =========================================== */
-
-    await session.commitTransaction();
-
-    session.endSession();
-
-    return res.status(200).json({
-      success: true,
-
-      message: "Sales Invoice deleted successfully",
-    });
-  } catch (error) {
-    /* ===========================================
-       ROLLBACK
-    =========================================== */
-
-    await session.abortTransaction();
-
-    session.endSession();
-
-    console.error("Delete Sales Invoice Error:", error);
-
-    return res.status(500).json({
-      success: false,
-
-      message: error.message,
+    await product.save({
+      session,
     });
   }
-};
+
+  // ========================================================
+  // VARIANT STOCK
+  // ========================================================
+
+  if (item.variant) {
+    const variant = await ProductVariant.findById(
+      item.variant
+    ).session(session);
+
+    if (!variant) {
+      throw new Error(
+        `Product variant not found: ${item.variant}`
+      );
+    }
+
+    variant.currentStock =
+      (Number(variant.currentStock) || 0) + quantity;
+
+    await variant.save({
+      session,
+    });
+  }
+
+  // ========================================================
+  // BATCH STOCK
+  // ========================================================
+
+  if (item.batch) {
+    const batch = await Batch.findById(item.batch).session(
+      session
+    );
+
+    if (!batch) {
+      throw new Error(
+        `Batch not found: ${item.batch}`
+      );
+    }
+
+    batch.remainingQuantity =
+      (Number(batch.remainingQuantity) || 0) + quantity;
+
+    await batch.save({
+      session,
+    });
+  }
+}
+
+// ==========================================================
+// USER WHO DELETED
+// ==========================================================
+
+const deletedBy =
+  req.user?._id ||
+  req.user?.id ||
+  null;
+
+// ==========================================================
+// SOFT DELETE
+// ==========================================================
+
+await SalesInvoice.updateOne(
+  {
+    _id: invoice._id,
+    isDeleted: false,
+  },
+  {
+    $set: {
+      isDeleted: true,
+      deletedAt: new Date(),
+      deletedBy: deletedBy,
+      updatedBy: deletedBy,
+    },
+  },
+  {
+    session,
+  }
+);
+
+// ==========================================================
+// COMMIT TRANSACTION
+// ==========================================================
+
+await session.commitTransaction();
+
+session.endSession();
+
+// ==========================================================
+// SUCCESS
+// ==========================================================
+
+return res.status(200).json({
+  success: true,
+  message: "Sales Invoice deleted successfully",
+  data: {
+    invoiceId: invoice._id,
+    invoiceNo: invoice.invoiceNo,
+    deletedAt: new Date(),
+  },
+});
+
+} catch (error) {// ==========================================================// ROLLBACK// ==========================================================
+
+if (session.inTransaction()) {
+  await session.abortTransaction();
+}
+
+session.endSession();
+
+console.error(
+  "Delete Sales Invoice Error:",
+  error
+);
+
+return res.status(500).json({
+  success: false,
+  message:
+    error.message ||
+    "Failed to delete Sales Invoice",
+});
+
+}};

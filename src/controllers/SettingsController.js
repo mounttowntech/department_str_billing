@@ -163,31 +163,158 @@ exports.updateSettings = asyncHandler(async (req, res) => {
   success(res, "Settings updated successfully.", settings);
 });
 
-/*
-|--------------------------------------------------------------------------
-| Delete Settings (Soft Delete)
-|--------------------------------------------------------------------------
-*/
+
+
+
+
+// ============================================================
+
+// DELETE SETTINGS
+
+// ============================================================
+
+
+
 exports.deleteSettings = asyncHandler(async (req, res) => {
-  const updatedBy = req.user?._id || req.body.updatedBy;
 
-  const settings = await Settings.findByIdAndUpdate(
-    req.params.id,
-    {
-      status: false,
-      updatedBy,
-    },
-    {
-      new: true,
-    },
-  );
+  const { id } = req.params;
 
-  if (!settings) {
-    return res.status(404).json({
+
+
+  // ==========================================================
+
+  // VALIDATE SETTINGS ID
+
+  // ==========================================================
+
+
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+
+    return res.status(400).json({
+
       success: false,
-      message: "Settings not found.",
+
+      message: "Invalid Settings ID.",
+
     });
+
   }
 
-  success(res, "Settings deleted successfully.");
+
+
+  // ==========================================================
+
+  // GET LOGGED-IN USER
+
+  // ==========================================================
+
+
+
+  const updatedBy =
+
+    req.user?._id ||
+
+    req.user?.id ||
+
+    null;
+
+
+
+  // ==========================================================
+
+  // FIND ACTIVE SETTINGS
+
+  // ==========================================================
+
+
+
+  const settings = await Settings.findOne({
+
+    _id: id,
+
+    status: true,
+
+    isDeleted: false,
+
+  });
+
+
+
+  // ==========================================================
+
+  // SETTINGS NOT FOUND
+
+  // ==========================================================
+
+
+
+  if (!settings) {
+
+    return res.status(404).json({
+
+      success: false,
+
+      message: "Settings not found or already deleted.",
+
+    });
+
+  }
+
+
+
+  // ==========================================================
+
+  // SOFT DELETE
+
+  // ==========================================================
+
+
+
+  settings.status = false;
+
+  settings.isDeleted = true;
+
+  settings.deletedAt = new Date();
+
+  settings.deletedBy = updatedBy;
+
+  settings.updatedBy = updatedBy;
+
+
+
+  await settings.save();
+
+
+
+  // ==========================================================
+
+  // SUCCESS
+
+  // ==========================================================
+
+
+
+  return res.status(200).json({
+
+    success: true,
+
+    message: "Settings deleted successfully.",
+
+    data: {
+
+      id: settings._id,
+
+      status: settings.status,
+
+      isDeleted: settings.isDeleted,
+
+      deletedAt: settings.deletedAt,
+
+      deletedBy: settings.deletedBy,
+
+    },
+
+  });
+
 });

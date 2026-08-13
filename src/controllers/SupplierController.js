@@ -1,5 +1,5 @@
 const Supplier = require("../models/Supplier");
-
+const mongoose=require("mongoose");
 exports.createSupplier = async (req, res) => {
   try {
     const supplier = await Supplier.create({
@@ -120,37 +120,61 @@ exports.updateSupplier = async (req, res) => {
   }
 };
 
-exports.deleteSupplier = async (req, res) => {
-  try {
-    const supplier = await Supplier.findByIdAndUpdate(
-      req.params.id,
-      {
-        status: "inactive",
-        updatedBy: req.user.id,
-      },
-      {
-        new: true,
-      }
-    );
 
-    if (!supplier) {
-      return res.status(404).json({
-        success: false,
-        message: "Supplier not found",
-      });
-    }
 
-    res.json({
-      success: true,
-      message: "Supplier deactivated successfully",
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
+exports.deleteSupplier = async (req, res) => {try {const { id } = req.params;
+
+// ==========================================================
+// VALIDATE SUPPLIER ID
+// ==========================================================
+
+if (!mongoose.Types.ObjectId.isValid(id)) {
+  return res.status(400).json({
+    success: false,
+    message: "Invalid Supplier ID",
+  });
+}
+
+// ==========================================================
+// FIND SUPPLIER
+// ==========================================================
+
+const supplier = await Supplier.findById(id);
+
+if (!supplier) {
+  return res.status(404).json({
+    success: false,
+    message: "Supplier not found",
+  });
+}
+
+// ==========================================================
+// PERMANENT DELETE
+// ==========================================================
+
+await Supplier.findByIdAndDelete(id);
+
+// ==========================================================
+// SUCCESS
+// ==========================================================
+
+return res.status(200).json({
+  success: true,
+  message: "Supplier deleted successfully",
+  data: {
+    supplierId: supplier._id,
+    supplierName: supplier.supplierName,
+  },
+});
+
+} catch (error) {console.error("Delete Supplier Error:", error);
+
+return res.status(500).json({
+  success: false,
+  message: error.message || "Failed to delete supplier",
+});
+
+}};
 
 exports.activateSupplier = async (req, res) => {
   try {

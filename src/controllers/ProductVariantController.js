@@ -124,14 +124,7 @@ exports.updateVariant = async (req, res) => {
 
 exports.deleteVariant = async (req, res) => {
   try {
-    const variant = await ProductVariant.findByIdAndUpdate(
-      req.params.id,
-      {
-        status: "inactive",
-        updatedBy: req.user?._id || req.user?.id,
-      },
-      { new: true }
-    );
+    const variant = await ProductVariant.findByIdAndDelete(req.params.id);
 
     if (!variant) {
       return res.status(404).json({
@@ -140,13 +133,19 @@ exports.deleteVariant = async (req, res) => {
       });
     }
 
-    res.json({
+    return res.status(200).json({
       success: true,
-      message: "Product variant deactivated successfully",
+      message: "Product variant deleted successfully",
       data: variant,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error("Delete variant error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete product variant",
+      error: error.message,
+    });
   }
 };
 

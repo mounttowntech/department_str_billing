@@ -927,93 +927,70 @@ exports.deletePurchaseReturn = async (req, res) => {
   try {
     const { id } = req.params;
 
-    /* ===============================
+    // ==========================================
+    // 1. Validate Purchase Return ID
+    // ==========================================
 
-       Validate ObjectId
-
-    =============================== */
-
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!id || !mongoose.Types.ObjectId.isValid(id)) {
       return res.status(400).json({
         success: false,
-
         message: "Invalid Purchase Return ID",
       });
     }
 
-    /* ===============================
-
-       Find Purchase Return
-
-    =============================== */
+    // ==========================================
+    // 2. Find Purchase Return
+    // ==========================================
 
     const purchaseReturn = await PurchaseReturn.findOne({
       _id: id,
-
       isDeleted: false,
     });
 
     if (!purchaseReturn) {
       return res.status(404).json({
         success: false,
-
-        message: "Purchase Return not found",
+        message: "Purchase Return not found or already deleted",
       });
     }
 
-    /* ===============================
-
-       Prevent Delete if Completed (Optional)
-
-    =============================== */
-
-    // Uncomment if you don't want completed returns deleted
-
-    /*
+    // ==========================================
+    // 3. Prevent Delete for Completed Return
+    // ==========================================
 
     if (purchaseReturn.returnStatus === "Completed") {
-
       return res.status(400).json({
-
         success: false,
-
         message: "Completed Purchase Return cannot be deleted.",
-
       });
-
     }
 
-    */
-
-    /* ===============================
-
-       Soft Delete
-
-    =============================== */
+    // ==========================================
+    // 4. Soft Delete
+    // ==========================================
 
     purchaseReturn.isDeleted = true;
-
     purchaseReturn.updatedBy = req.user?.id || null;
 
     await purchaseReturn.save();
 
-    /* ===============================
-
-       Success Response
-
-    =============================== */
+    // ==========================================
+    // 5. Success Response
+    // ==========================================
 
     return res.status(200).json({
       success: true,
-
       message: "Purchase Return deleted successfully.",
+      data: {
+        id: purchaseReturn._id,
+        isDeleted: purchaseReturn.isDeleted,
+      },
     });
   } catch (error) {
     console.error("Delete Purchase Return Error:", error);
 
     return res.status(500).json({
       success: false,
-
       message: error.message || "Internal Server Error",
     });
   }

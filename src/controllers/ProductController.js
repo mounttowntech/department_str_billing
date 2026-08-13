@@ -131,14 +131,7 @@ exports.updateProduct = async (req, res) => {
 
 exports.deleteProduct = async (req, res) => {
   try {
-    const product = await Product.findByIdAndUpdate(
-      req.params.id,
-      {
-        status: "inactive",
-        updatedBy: req.user?._id || req.user?.id,
-      },
-      { new: true }
-    );
+    const product = await Product.findById(req.params.id);
 
     if (!product) {
       return res.status(404).json({
@@ -147,16 +140,35 @@ exports.deleteProduct = async (req, res) => {
       });
     }
 
-    res.json({
+    if (product.status === "inactive") {
+      return res.status(400).json({
+        success: false,
+        message: "Product is already deleted",
+      });
+    }
+
+    product.status = "inactive";
+    product.updatedBy = req.user?._id || req.user?.id;
+    product.deletedAt = new Date();
+    product.deletedBy = req.user?._id || req.user?.id;
+
+    await product.save();
+
+    return res.status(200).json({
       success: true,
-      message: "Product deactivated successfully",
+      message: "Product deleted successfully",
       data: product,
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: error.message });
+    console.error("Delete product error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to delete product",
+      error: error.message,
+    });
   }
 };
-
 exports.activateProduct = async (req, res) => {
   try {
     const product = await Product.findByIdAndUpdate(

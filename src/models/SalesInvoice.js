@@ -387,6 +387,7 @@ salesInvoiceSchema.index({ warehouse: 1 });
 salesInvoiceSchema.index({ invoiceDate: -1 });
 salesInvoiceSchema.index({ paymentStatus: 1 });
 salesInvoiceSchema.index({ billingType: 1 });
+salesInvoiceSchema.index({ isDeleted: 1 });
 
 /* ==========================================
    JSON
