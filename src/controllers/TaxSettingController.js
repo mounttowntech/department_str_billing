@@ -190,33 +190,57 @@ exports.updateTaxSetting = async (req, res) => {
 // ==============================
 // Delete Tax Setting
 // ==============================
-exports.deleteTaxSetting = async (req, res) => {
 
-  try {
 
-    const tax = await TaxSetting.findById(req.params.id);
+exports.deleteTaxSetting = async (req, res) => {try {const { id } = req.params;
 
-    if (!tax) {
-      return res.status(404).json({
-        success: false,
-        message: "Tax Setting not found",
-      });
-    }
+// ==========================================================
+// VALIDATE TAX SETTING ID
+// ==========================================================
 
-    await tax.deleteOne();
+if (!mongoose.Types.ObjectId.isValid(id)) {
+  return res.status(400).json({
+    success: false,
+    message: "Invalid Tax Setting ID",
+  });
+}
 
-    res.json({
-      success: true,
-      message: "Tax Setting deleted successfully",
-    });
+// ==========================================================
+// FIND TAX SETTING
+// ==========================================================
 
-  } catch (error) {
+const tax = await TaxSetting.findById(id);
 
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+if (!tax) {
+  return res.status(404).json({
+    success: false,
+    message: "Tax Setting not found",
+  });
+}
 
-  }
+// ==========================================================
+// PERMANENT DELETE
+// ==========================================================
 
-};
+await TaxSetting.findByIdAndDelete(id);
+
+// ==========================================================
+// SUCCESS RESPONSE
+// ==========================================================
+
+return res.status(200).json({
+  success: true,
+  message: "Tax Setting deleted successfully",
+  data: {
+    taxSettingId: tax._id,
+  },
+});
+
+} catch (error) {console.error("Delete Tax Setting Error:", error);
+
+return res.status(500).json({
+  success: false,
+  message: error.message || "Failed to delete Tax Setting",
+});
+
+}};

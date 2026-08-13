@@ -1,5 +1,5 @@
 const Unit = require("../models/Unit");
-
+const mongoose=require("mongoose");
 exports.createUnit = async (req, res) => {
   try {
     const unit = await Unit.create({
@@ -126,37 +126,61 @@ exports.updateUnit = async (req, res) => {
 };
 
 // Soft delete — deactivates the unit, keeps the record.
-exports.deleteUnit = async (req, res) => {
-  try {
-    const unit = await Unit.findByIdAndUpdate(
-      req.params.id,
-      {
-        status: "inactive",
-        updatedBy: req.user?.id,
-      },
-      {
-        new: true,
-      }
-    );
 
-    if (!unit) {
-      return res.status(404).json({
-        success: false,
-        message: "Unit not found",
-      });
-    }
 
-    res.json({
-      success: true,
-      message: "Unit deactivated successfully",
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
-  }
-};
+exports.deleteUnit = async (req, res) => {try {const { id } = req.params;
+
+// ==========================================================
+// VALIDATE UNIT ID
+// ==========================================================
+
+if (!mongoose.Types.ObjectId.isValid(id)) {
+  return res.status(400).json({
+    success: false,
+    message: "Invalid Unit ID",
+  });
+}
+
+// ==========================================================
+// FIND UNIT
+// ==========================================================
+
+const unit = await Unit.findById(id);
+
+if (!unit) {
+  return res.status(404).json({
+    success: false,
+    message: "Unit not found",
+  });
+}
+
+// ==========================================================
+// PERMANENT DELETE
+// ==========================================================
+
+await Unit.findByIdAndDelete(id);
+
+// ==========================================================
+// SUCCESS RESPONSE
+// ==========================================================
+
+return res.status(200).json({
+  success: true,
+  message: "Unit deleted successfully",
+  data: {
+    unitId: unit._id,
+    unitName: unit.name,
+  },
+});
+
+} catch (error) {console.error("Delete Unit Error:", error);
+
+return res.status(500).json({
+  success: false,
+  message: error.message || "Failed to delete Unit",
+});
+
+}};
 
 exports.activateUnit = async (req, res) => {
   try {
