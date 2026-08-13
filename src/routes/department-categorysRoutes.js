@@ -1,5 +1,8 @@
 const router = require("express").Router();
-const upload = require("../middleware/upload");
+
+const { verifyToken } = require("../middleware/authMiddleware");
+const { uploadCategoryImage } = require("../middleware/uploadMiddleware");
+
 const {
   createDepartmentCategory,
   getAllDepartmentCategory,
@@ -9,16 +12,30 @@ const {
   deleteDepartmentCategory,
 } = require("../controllers/DepartmentCategoryController");
 
-const { verifyToken } = require("../middleware/authMiddleware");
-const {
-  uploadCategoryImage,
-} = require("../middleware/uploadMiddleware");
 
-router.post("/create", verifyToken, uploadCategoryImage.single("image"),createDepartmentCategory);
+const uploadCategoryFiles = uploadCategoryImage.fields([
+  { name: "image", maxCount: 1 },
+  { name: "icon", maxCount: 1 },
+]);
+
+router.post(
+  "/create",
+  verifyToken,
+  uploadCategoryFiles,
+  createDepartmentCategory
+);
+
 router.get("/all", verifyToken, getAllDepartmentCategory);
 router.get("/:id", verifyToken, getDepartmentCategoryById);
-router.put("/update/:id", verifyToken, updateDepartmentCategory);
-router.patch("/toggle/:id", verifyToken,toggleDepartmentCategory );
+
+router.put(
+  "/update/:id",
+  verifyToken,
+  uploadCategoryFiles,
+  updateDepartmentCategory
+);
+
+router.patch("/activate/:id", verifyToken, toggleDepartmentCategory);
 router.delete("/delete/:id", verifyToken, deleteDepartmentCategory);
 
 module.exports = router;

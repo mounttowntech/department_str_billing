@@ -114,6 +114,13 @@ exports.updateWarehouse = async (req, res) => {
       data: warehouse,
     });
   } catch (error) {
+    if (error.code === 11000) {
+      return res.status(400).json({
+        success: false,
+        message: "Warehouse code already exists for this store.",
+      });
+    }
+
     res.status(500).json({
       success: false,
       message: error.message,
@@ -121,16 +128,11 @@ exports.updateWarehouse = async (req, res) => {
   }
 };
 
-exports.deleteWarehouse = async (req, res) => {
+// Flips active <-> inactive in one call (mounted at /activate/:id to
+// match Category/Brand convention, even though it toggles both ways)
+exports.toggleWarehouseStatus = async (req, res) => {
   try {
-    const warehouse = await Warehouse.findByIdAndUpdate(
-      req.params.id,
-      {
-        status: "inactive",
-        updatedBy: req.user?.id,
-      },
-      { new: true }
-    );
+    const warehouse = await Warehouse.findById(req.params.id);
 
     if (!warehouse) {
       return res.status(404).json({
@@ -139,9 +141,14 @@ exports.deleteWarehouse = async (req, res) => {
       });
     }
 
+    warehouse.status = warehouse.status === "active" ? "inactive" : "active";
+    warehouse.updatedBy = req.user?.id;
+    await warehouse.save();
+
     res.json({
       success: true,
-      message: "Warehouse deactivated successfully",
+      message: `Warehouse ${warehouse.status === "active" ? "activated" : "deactivated"} successfully`,
+      data: warehouse,
     });
   } catch (error) {
     res.status(500).json({
@@ -151,16 +158,10 @@ exports.deleteWarehouse = async (req, res) => {
   }
 };
 
-exports.activateWarehouse = async (req, res) => {
+// Permanent delete — removes the document entirely
+exports.deleteWarehouse = async (req, res) => {
   try {
-    const warehouse = await Warehouse.findByIdAndUpdate(
-      req.params.id,
-      {
-        status: "active",
-        updatedBy: req.user?.id,
-      },
-      { new: true }
-    );
+    const warehouse = await Warehouse.findByIdAndDelete(req.params.id);
 
     if (!warehouse) {
       return res.status(404).json({
@@ -171,7 +172,8 @@ exports.activateWarehouse = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Warehouse activated successfully",
+      message: "Warehouse permanently deleted",
+      data: warehouse,
     });
   } catch (error) {
     res.status(500).json({

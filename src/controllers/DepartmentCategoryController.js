@@ -1,20 +1,152 @@
 const mongoose = require("mongoose");
 const DepartmentCategory = require("../models/DepartmentCategory");
 
+// Converts multer's actual on-disk file path into a public URL, based
+// on wherever "/uploads" appears in that path — this stays correct
+// even if the upload middleware writes into a subfolder (e.g.
+// uploads/misc/x.jpg or uploads/categories/x.jpg) instead of a flat
+// uploads/x.jpg, which is what was causing the 404s: the old code
+// assumed a flat path regardless of where multer actually put the file.
+const toPublicUrl = (file) => {
+  if (!file) return null;
+
+  const normalized = file.path.replace(/\\/g, "/");
+  const idx = normalized.indexOf("/uploads/");
+
+  if (idx === -1) {
+    // Fallback — shouldn't happen if UPLOAD_ROOT is under an "uploads"
+    // folder, but avoids crashing if it somehow isn't.
+    return `/uploads/${file.filename}`;
+  }
+
+  return normalized.slice(idx);
+};
+
 // =====================================================
 // CREATE CATEGORY
 // =====================================================
 
 exports.createDepartmentCategory = async (req, res) => {
   try {
-    const imageURL = req.file
-      ? `/uploads/categories/${req.file.filename}`
-      : null;
+    const {
+      store,
+      categoryCode,
+      categoryName,
+      displayName,
+      description,
+      departmentType,
+      taxSetting,
+      displayOrder,
+      isFeatured,
+      allowDiscount,
+      allowReturn,
+    } = req.body;
+
+    // -----------------------------
+    // REQUIRED STORE
+    // -----------------------------
+
+    if (!store) {
+      return res.status(400).json({
+        success: false,
+        message: "Please select a store.",
+      });
+    }
+
+    if (!mongoose.Types.ObjectId.isValid(store)) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid store ID.",
+      });
+    }
+
+    // -----------------------------
+    // REQUIRED FIELDS
+    // -----------------------------
+
+    if (!categoryCode?.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Category code is required.",
+      });
+    }
+
+    if (!categoryName?.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: "Category name is required.",
+      });
+    }
+
+    // -----------------------------
+    // TAX
+    // Empty tax = null
+    // -----------------------------
+
+    let validTaxSetting = null;
+
+    if (taxSetting) {
+      if (!mongoose.Types.ObjectId.isValid(taxSetting)) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid tax setting.",
+        });
+      }
+
+      validTaxSetting = taxSetting;
+    }
+
+    // -----------------------------
+    // FILES
+    // req.files is populated by upload.fields([...]); each field is
+    // an array (maxCount: 1), so grab index 0 if present.
+    // -----------------------------
+
+    const imageFile = req.files?.image?.[0];
+    const iconFile = req.files?.icon?.[0];
+
+    // -----------------------------
+    // CREATE
+    // -----------------------------
 
     const category = await DepartmentCategory.create({
-      ...req.body,
+      store,
 
-      imageURL,
+      categoryCode: categoryCode.trim(),
+
+      categoryName: categoryName.trim(),
+
+      displayName:
+        displayName?.trim() ||
+        categoryName.trim(),
+
+      description:
+        description?.trim() || "",
+
+      imageURL: toPublicUrl(imageFile),
+
+      icon: toPublicUrl(iconFile),
+
+      departmentType:
+        departmentType || "department_store",
+
+      taxSetting: validTaxSetting,
+
+      displayOrder:
+        Number(displayOrder) || 1,
+
+      isFeatured:
+        Boolean(isFeatured),
+
+      allowDiscount:
+        allowDiscount !== undefined
+          ? Boolean(allowDiscount)
+          : true,
+
+      allowReturn:
+        allowReturn !== undefined
+          ? Boolean(allowReturn)
+          : true,
 
       createdBy: req.user?.id,
     });
@@ -51,7 +183,7 @@ exports.createDepartmentCategory = async (req, res) => {
       return res.status(400).json({
         success: false,
         message:
-          "Category code or category name already exists in this store",
+          "Category code or category name already exists in this store.",
       });
     }
 
@@ -62,7 +194,16 @@ exports.createDepartmentCategory = async (req, res) => {
     
   }
 };
-exports.getAllDepartmentCategory = async (req, res) => {
+
+
+// =====================================================
+// GET ALL CATEGORIES
+// =====================================================
+
+exports.getAllDepartmentCategory = async (
+  req,
+  res
+) => {
   try {
 
     const {
@@ -218,14 +359,16 @@ exports.updateDepartmentCategory =
         categoryName,
         displayName,
         description,
-        image,
-        icon,
         departmentType,
         taxSetting,
         displayOrder,
         isFeatured,
         allowDiscount,
         allowReturn,
+        // Frontend sends these back so we know what to keep when no
+        // new file is uploaded for that particular field this time.
+        existingImageURL,
+        existingIcon,
       } = req.body;
 
       // -----------------------------
@@ -287,6 +430,13 @@ exports.updateDepartmentCategory =
       }
 
       // -----------------------------
+      // FILES
+      // -----------------------------
+
+      const imageFile = req.files?.image?.[0];
+      const iconFile = req.files?.icon?.[0];
+
+      // -----------------------------
       // UPDATE
       // -----------------------------
 
@@ -309,14 +459,16 @@ exports.updateDepartmentCategory =
             description:
               description?.trim() || "",
 
-            image: req.file
-  ? `/uploads/${req.file.filename}`
-  : "",
+            // Only overwrite if a new file came in this request;
+            // otherwise keep whatever was there before instead of
+            // wiping it to null.
+            imageURL: imageFile
+              ? toPublicUrl(imageFile)
+              : existingImageURL || null,
 
-            icon:
-  typeof icon === "string"
-    ? icon.trim()
-    : icon || "",
+            icon: iconFile
+              ? toPublicUrl(iconFile)
+              : existingIcon || null,
 
             departmentType:
               departmentType ||

@@ -1,11 +1,30 @@
 const Brand = require("../models/Brand");
+const fs = require("fs");
+const path = require("path");
+
+// Helper: delete a logo file from disk when replaced, removed, or the brand is deleted
+const removeLogoFile = (logoPath) => {
+  if (!logoPath) return;
+  const fullPath = path.join(__dirname, "..", logoPath.replace(/^\/+/, ""));
+  fs.unlink(fullPath, (err) => {
+    if (err && err.code !== "ENOENT") {
+      console.error("Failed to remove logo file:", err.message);
+    }
+  });
+};
 
 exports.createBrand = async (req, res) => {
   try {
-    const brand = await Brand.create({
-      ...req.body,
-      createdBy: req.user?.id,
-    });
+    const payload = { ...req.body, createdBy: req.user?.id };
+
+    // existingLogo is a frontend-only field (used on edit), never store it
+    delete payload.existingLogo;
+
+    if (req.file) {
+      payload.logo = `/uploads/brands/${req.file.filename}`;
+    }
+
+    const brand = await Brand.create(payload);
 
     res.status(201).json({
       success: true,
@@ -96,24 +115,35 @@ exports.getBrandById = async (req, res) => {
 
 exports.updateBrand = async (req, res) => {
   try {
-    const brand = await Brand.findByIdAndUpdate(
-      req.params.id,
-      {
-        ...req.body,
-        updatedBy: req.user?.id,
-      },
-      {
-        new: true,
-        runValidators: true,
-      }
-    );
-
-    if (!brand) {
+    const existing = await Brand.findById(req.params.id);
+    if (!existing) {
       return res.status(404).json({
         success: false,
         message: "Brand not found",
       });
     }
+
+    const payload = { ...req.body, updatedBy: req.user?.id };
+    const existingLogoSentByClient = payload.existingLogo;
+    delete payload.existingLogo; // not a schema field, just a signal
+
+    if (req.file) {
+      // A new logo was chosen — swap it and delete the old file
+      payload.logo = `/uploads/brands/${req.file.filename}`;
+      removeLogoFile(existing.logo);
+    } else if (existingLogoSentByClient === "") {
+      // User explicitly removed the logo without picking a new one
+      payload.logo = "";
+      removeLogoFile(existing.logo);
+    } else {
+      // No new file, logo not removed — leave the current logo untouched
+      delete payload.logo;
+    }
+
+    const brand = await Brand.findByIdAndUpdate(req.params.id, payload, {
+      new: true,
+      runValidators: true,
+    });
 
     res.json({
       success: true,
@@ -135,18 +165,11 @@ exports.updateBrand = async (req, res) => {
   }
 };
 
-exports.deleteBrand = async (req, res) => {
+// Flips active <-> inactive in a single call (mounted at /activate/:id
+// to match the Category module's convention, even though it toggles both ways)
+exports.toggleBrandStatus = async (req, res) => {
   try {
-    const brand = await Brand.findByIdAndUpdate(
-      req.params.id,
-      {
-        status: "inactive",
-        updatedBy: req.user?.id,
-      },
-      {
-        new: true,
-      }
-    );
+    const brand = await Brand.findById(req.params.id);
 
     if (!brand) {
       return res.status(404).json({
@@ -155,9 +178,13 @@ exports.deleteBrand = async (req, res) => {
       });
     }
 
+    brand.status = brand.status === "active" ? "inactive" : "active";
+    brand.updatedBy = req.user?.id;
+    await brand.save();
+
     res.json({
       success: true,
-      message: "Brand deactivated successfully",
+      message: `Brand ${brand.status === "active" ? "activated" : "deactivated"} successfully`,
       data: brand,
     });
   } catch (error) {
@@ -168,18 +195,10 @@ exports.deleteBrand = async (req, res) => {
   }
 };
 
-exports.activateBrand = async (req, res) => {
+// Permanent delete — removes the document and its logo file from disk
+exports.deleteBrand = async (req, res) => {
   try {
-    const brand = await Brand.findByIdAndUpdate(
-      req.params.id,
-      {
-        status: "active",
-        updatedBy: req.user?.id,
-      },
-      {
-        new: true,
-      }
-    );
+    const brand = await Brand.findByIdAndDelete(req.params.id);
 
     if (!brand) {
       return res.status(404).json({
@@ -188,9 +207,11 @@ exports.activateBrand = async (req, res) => {
       });
     }
 
+    removeLogoFile(brand.logo);
+
     res.json({
       success: true,
-      message: "Brand activated successfully",
+      message: "Brand permanently deleted",
       data: brand,
     });
   } catch (error) {
