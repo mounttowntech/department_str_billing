@@ -1,13 +1,30 @@
 const Purchase = require("../models/Purchase");
-
-/* ==============================
-   Create Purchase
-================================ */
-
 exports.createPurchase = async (req, res) => {
   try {
+    const year = new Date().getFullYear();
+
+    const lastPurchase = await Purchase.findOne({
+      purchaseNo: { $regex: `^PUR-${year}-` },
+    }).sort({ createdAt: -1 });
+
+    let nextNumber = 1;
+
+    if (lastPurchase) {
+      const lastNumber = parseInt(
+        lastPurchase.purchaseNo.split("-").pop(),
+        10
+      );
+
+      if (!isNaN(lastNumber)) {
+        nextNumber = lastNumber + 1;
+      }
+    }
+
+    const purchaseNo = `PUR-${year}-${String(nextNumber).padStart(3, "0")}`;
+
     const purchase = await Purchase.create({
       ...req.body,
+      purchaseNo,
       createdBy: req.user?._id || req.user?.id,
     });
 
@@ -25,11 +42,12 @@ exports.createPurchase = async (req, res) => {
     });
 
   } catch (error) {
+    console.error("Create Purchase Error:", error);
 
     if (error.code === 11000) {
       return res.status(400).json({
         success: false,
-        message: "Purchase Number already exists",
+        message: "Purchase number already exists.",
       });
     }
 
@@ -39,7 +57,6 @@ exports.createPurchase = async (req, res) => {
     });
   }
 };
-
 /* ==============================
    Get All Purchases
 ================================ */

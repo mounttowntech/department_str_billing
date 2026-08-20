@@ -1,9 +1,5 @@
 const mongoose = require("mongoose");
 
-/* ==========================================
-   Purchase Return Item Schema
-========================================== */
-
 const purchaseReturnItemSchema = new mongoose.Schema(
   {
     product: {
@@ -66,10 +62,6 @@ const purchaseReturnItemSchema = new mongoose.Schema(
     _id: false,
   }
 );
-
-/* ==========================================
-   Purchase Return Schema
-========================================== */
 
 const purchaseReturnSchema = new mongoose.Schema(
   {
@@ -167,10 +159,6 @@ const purchaseReturnSchema = new mongoose.Schema(
     versionKey: false,
   }
 );
-
-/* ==========================================
-   Calculate Totals
-========================================== */
 
 purchaseReturnSchema.pre("save", async function () {
   this.totalQuantity = 0;

@@ -5,10 +5,6 @@ const Supplier = require("../models/Supplier");
 const Store = require("../models/Store");
 const Warehouse = require("../models/Warehouse");
 const mongoose = require("mongoose");
-/* ======================================================
-   Generate Purchase Return Number
-   Format : PRTN-000001
-====================================================== */
 
 const generateReturnNo = async () => {
   const lastReturn = await PurchaseReturn.findOne()
