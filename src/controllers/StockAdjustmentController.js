@@ -5,6 +5,9 @@ const asyncHandler = require("../utils/asyncHandler");
 const { success } = require("../utils/responseHandler");
 const { moveStock } = require("../services/inventoryService");
 
+/* ============================================================
+   CREATE STOCK ADJUSTMENT
+============================================================ */
 exports.createStockAdjustment = asyncHandler(async (req, res) => {
   const {
     store,
@@ -15,19 +18,10 @@ exports.createStockAdjustment = asyncHandler(async (req, res) => {
     quantity,
     reason,
     skuCode,
+    adjustmentNo,
   } = req.body;
 
-  // ==========================================================
-  // USER
-  // ==========================================================
-
-  const userId =
-    req.user?._id ||
-    req.user?.id ||
-    req.user?.userId;
-
-  console.log("CREATE STOCK ADJUSTMENT USER:", userId);
-
+  const userId = req.user?._id || req.user?.id || req.user?.userId;
   if (!userId) {
     return res.status(401).json({
       success: false,
@@ -35,46 +29,22 @@ exports.createStockAdjustment = asyncHandler(async (req, res) => {
     });
   }
 
-  // ==========================================================
-  // VALIDATE VARIANT
-  // ==========================================================
+  if (!store) {
+    return res.status(400).json({ success: false, message: "Store is required" });
+  }
 
   if (!variant) {
-    return res.status(400).json({
-      success: false,
-      message: "Variant is required",
-    });
+    return res.status(400).json({ success: false, message: "Variant is required" });
   }
-
-  // ==========================================================
-  // VALIDATE STORE
-  // ==========================================================
-
-  if (!store) {
-    return res.status(400).json({
-      success: false,
-      message: "Store is required",
-    });
-  }
-
-  // ==========================================================
-  // VALIDATE ADJUSTMENT TYPE
-  // ==========================================================
 
   if (!["increase", "decrease"].includes(adjustmentType)) {
     return res.status(400).json({
       success: false,
-      message:
-        "Adjustment type must be increase or decrease",
+      message: "Adjustment type must be increase or decrease",
     });
   }
 
-  // ==========================================================
-  // VALIDATE QUANTITY
-  // ==========================================================
-
   const qty = Number(quantity);
-
   if (!Number.isFinite(qty) || qty <= 0) {
     return res.status(400).json({
       success: false,
@@ -82,13 +52,9 @@ exports.createStockAdjustment = asyncHandler(async (req, res) => {
     });
   }
 
-  // ==========================================================
-  // FIND VARIANT
-  // ==========================================================
-
   const variantData = await ProductVariant.findOne({
     _id: variant,
-    store: store,
+    store,
   });
 
   if (!variantData) {
@@ -98,384 +64,350 @@ exports.createStockAdjustment = asyncHandler(async (req, res) => {
     });
   }
 
-  // ==========================================================
-  // ADJUSTMENT NUMBER
-  // ==========================================================
-
-  const adjustmentNo = (
-    req.body.adjustmentNo ||
-    `ADJ-${Date.now()}`
+  const finalAdjustmentNo = (
+    adjustmentNo || `ADJ-${Date.now()}`
   ).toUpperCase();
 
-  // ==========================================================
-  // STOCK OPERATION
-  // ==========================================================
-
   const operation =
-    adjustmentType === "increase"
-      ? "adjustment_in"
-      : "adjustment_out";
-
-  // ==========================================================
-  // START TRANSACTION
-  // ==========================================================
+    adjustmentType === "increase" ? "adjustment_in" : "adjustment_out";
 
   const session = await mongoose.startSession();
 
   try {
     session.startTransaction();
 
-    // ========================================================
-    // MOVE STOCK
-    // ========================================================
-
     const moved = await moveStock({
       variantId: variantData._id,
-
       batchId: batch || null,
-
       quantity: qty,
-
       operation,
-
       referenceModel: "StockAdjustment",
-
-      referenceNumber: adjustmentNo,
-
+      referenceNumber: finalAdjustmentNo,
       store,
-
       warehouse: warehouse || null,
-
       createdBy: userId,
-
       remarks: reason || null,
-
       session,
     });
-
-    // ========================================================
-    // CREATE STOCK ADJUSTMENT
-    // ========================================================
 
     const [doc] = await StockAdjustment.create(
       [
         {
-          adjustmentNo,
-
+          adjustmentNo: finalAdjustmentNo,
           store,
-
           warehouse: warehouse || null,
-
           batch: batch || null,
-
           product: variantData.product,
-
           variant: variantData._id,
-
-          skuCode:
-            skuCode ||
-            variantData.skuCode,
-
+          skuCode: skuCode || variantData.skuCode || "",
           adjustmentType,
-
           quantity: qty,
-
           beforeStock: moved.beforeStock,
-
           afterStock: moved.afterStock,
-
-          reason: reason || null,
-
-          status: "active",
-
-          isDeleted: false,
-
+          reason: reason || "",
           createdBy: userId,
         },
       ],
-      {
-        session,
-      }
+      { session }
     );
 
-    // ========================================================
-    // COMMIT
-    // ========================================================
-
     await session.commitTransaction();
-
     session.endSession();
+
+    const populatedDoc = await StockAdjustment.findById(doc._id)
+      .populate("store", "storeName name")
+      .populate("warehouse", "warehouseName name")
+      .populate("product", "productName name")
+      .populate("variant", "skuCode name packSize");
 
     return success(
       res,
       "Stock adjustment created successfully",
-      doc,
+      populatedDoc,
       201
     );
-  } catch (err) {
+  } catch (error) {
     if (session.inTransaction()) {
       await session.abortTransaction();
     }
-
     session.endSession();
-
-    console.error(
-      "Create Stock Adjustment Error:",
-      err
-    );
-
-    throw err;
+    console.error("Create Stock Adjustment Error:", error);
+    throw error;
   }
 });
 
+/* ============================================================
+   GET ALL STOCK ADJUSTMENTS
+============================================================ */
 exports.getAllStockAdjustment = asyncHandler(async (req, res) => {
   const filter = {};
+
   if (req.query.store) filter.store = req.query.store;
   if (req.query.warehouse) filter.warehouse = req.query.warehouse;
   if (req.query.product) filter.product = req.query.product;
   if (req.query.variant) filter.variant = req.query.variant;
   if (req.query.adjustmentType) filter.adjustmentType = req.query.adjustmentType;
-  if (req.query.status) filter.status = req.query.status;
+
   if (req.query.from || req.query.to) {
     filter.createdAt = {};
     if (req.query.from) filter.createdAt.$gte = new Date(req.query.from);
-    if (req.query.to) filter.createdAt.$lte = new Date(req.query.to);
+    if (req.query.to) {
+      const toDate = new Date(req.query.to);
+      toDate.setHours(23, 59, 59, 999);
+      filter.createdAt.$lte = toDate;
+    }
   }
 
   const data = await StockAdjustment.find(filter)
-    .populate("store", "name")
-    .populate("warehouse", "name")
-    .populate("product", "name")
-    .populate("variant", "skuCode")
+    .populate("store", "storeName name")
+    .populate("warehouse", "warehouseName name")
+    .populate("product", "productName name")
+    .populate("variant", "skuCode name packSize")
     .sort({ createdAt: -1 });
 
-  success(res, "StockAdjustment list", data);
+  return success(res, "Stock Adjustment list", data);
 });
 
+/* ============================================================
+   GET STOCK ADJUSTMENT BY ID
+============================================================ */
 exports.getStockAdjustmentById = asyncHandler(async (req, res) => {
   const data = await StockAdjustment.findById(req.params.id)
-    .populate("store", "name")
-    .populate("warehouse", "name")
-    .populate("product", "name")
-    .populate("variant", "skuCode");
-  if (!data)
-    return res.status(404).json({ success: false, message: "StockAdjustment not found" });
-  success(res, "StockAdjustment details", data);
-});
+    .populate("store", "storeName name")
+    .populate("warehouse", "warehouseName name")
+    .populate("product", "productName name")
+    .populate("variant", "skuCode name packSize");
 
-// Adjustments are ledger entries — only non-stock-affecting fields (reason) are editable
-exports.updateStockAdjustment = asyncHandler(async (req, res) => {
-  const existing = await StockAdjustment.findById(req.params.id);
-  if (!existing)
-    return res.status(404).json({ success: false, message: "StockAdjustment not found" });
-
-  if (existing.status === "reversed") {
-    return res.status(400).json({ success: false, message: "Cannot edit a reversed adjustment" });
+  if (!data) {
+    return res.status(404).json({
+      success: false,
+      message: "StockAdjustment not found",
+    });
   }
 
-  const { reason } = req.body; // deliberately ignore quantity/adjustmentType/store/etc.
-  const data = await StockAdjustment.findByIdAndUpdate(
-    req.params.id,
-    { reason },
-    { new: true, runValidators: true }
-  );
-  success(res, "StockAdjustment updated", data);
+  return success(res, "StockAdjustment details", data);
 });
 
-// "Delete" now means reverse the stock movement, keeping an audit trail
+/* ============================================================
+   UPDATE STOCK ADJUSTMENT (ALL FIELDS EDITABLE WITH RE-SYNC)
+============================================================ */
+exports.updateStockAdjustment = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const {
+    store,
+    warehouse,
+    product,
+    variant,
+    skuCode,
+    adjustmentType,
+    quantity,
+    reason,
+  } = req.body;
 
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid Stock Adjustment ID",
+    });
+  }
 
+  const userId = req.user?._id || req.user?.id || req.user?.userId;
+  if (!userId) {
+    return res.status(401).json({
+      success: false,
+      message: "Authenticated user not found",
+    });
+  }
 
-exports.deleteStockAdjustment = asyncHandler(async (req, res) => {const { id } = req.params;
+  const session = await mongoose.startSession();
 
+  try {
+    session.startTransaction();
 
-if (!mongoose.Types.ObjectId.isValid(id)) {return res.status(400).json({success: false,message: "Invalid StockAdjustment ID",});}
+    const existing = await StockAdjustment.findById(id).session(session);
+    if (!existing) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({
+        success: false,
+        message: "Stock Adjustment not found",
+      });
+    }
 
-// ==========================================================// GET USER// ==========================================================
+    const newStore = store || existing.store;
+    const newVariant = variant || existing.variant;
+    const newType = adjustmentType || existing.adjustmentType;
+    const newQty = quantity !== undefined ? Number(quantity) : existing.quantity;
 
-const userId = req.user?._id || req.user?.id;
+    const variantData = await ProductVariant.findOne({
+      _id: newVariant,
+      store: newStore,
+    }).session(session);
 
-if (!userId) {return res.status(401).json({success: false,message: "Authenticated user not found",});}
+    if (!variantData) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({
+        success: false,
+        message: "Variant not found for the selected store",
+      });
+    }
 
-// ==========================================================// START TRANSACTION// ==========================================================
+    // 1. Reverse old stock adjustment
+    const reverseOperation =
+      existing.adjustmentType === "increase"
+        ? "adjustment_out"
+        : "adjustment_in";
 
-const session = await mongoose.startSession();
+    await moveStock({
+      variantId: existing.variant,
+      batchId: existing.batch || null,
+      quantity: Number(existing.quantity),
+      operation: reverseOperation,
+      referenceModel: "StockAdjustment",
+      referenceNumber: `${existing.adjustmentNo}-EDIT-REVERSE`,
+      store: existing.store,
+      warehouse: existing.warehouse || null,
+      createdBy: userId,
+      remarks: `Reversal before update for ${existing.adjustmentNo}`,
+      session,
+    });
 
-try {session.startTransaction();
+    // 2. Apply new stock adjustment
+    const applyOperation =
+      newType === "increase" ? "adjustment_in" : "adjustment_out";
 
-// ========================================================
-// FIND STOCK ADJUSTMENT
-// ========================================================
+    const moved = await moveStock({
+      variantId: variantData._id,
+      batchId: existing.batch || null,
+      quantity: newQty,
+      operation: applyOperation,
+      referenceModel: "StockAdjustment",
+      referenceNumber: `${existing.adjustmentNo}-UPDATED`,
+      store: newStore,
+      warehouse: warehouse || existing.warehouse || null,
+      createdBy: userId,
+      remarks: reason || existing.reason || null,
+      session,
+    });
 
-const existing = await StockAdjustment.findOne({
-  _id: id,
-  isDeleted: false,
-}).session(session);
+    // 3. Update document fields
+    existing.store = newStore;
+    existing.warehouse = warehouse !== undefined ? warehouse : existing.warehouse;
+    existing.product = product || variantData.product;
+    existing.variant = variantData._id;
+    existing.skuCode = skuCode || variantData.skuCode || existing.skuCode;
+    existing.adjustmentType = newType;
+    existing.quantity = newQty;
+    existing.beforeStock = moved.beforeStock;
+    existing.afterStock = moved.afterStock;
+    existing.reason = reason !== undefined ? reason : existing.reason;
+    existing.updatedBy = userId;
 
-if (!existing) {
-  await session.abortTransaction();
-  session.endSession();
+    await existing.save({ session });
 
-  return res.status(404).json({
-    success: false,
-    message: "StockAdjustment not found",
-  });
-}
+    await session.commitTransaction();
+    session.endSession();
 
-// ========================================================
-// VALIDATE ADJUSTMENT TYPE
-// ========================================================
+    const populated = await StockAdjustment.findById(existing._id)
+      .populate("store", "storeName name")
+      .populate("warehouse", "warehouseName name")
+      .populate("product", "productName name")
+      .populate("variant", "skuCode name packSize");
 
-if (
-  existing.adjustmentType !== "increase" &&
-  existing.adjustmentType !== "decrease"
-) {
-  throw new Error(
-    `Invalid adjustment type: ${existing.adjustmentType}`
-  );
-}
-
-// ========================================================
-// VALIDATE QUANTITY
-// ========================================================
-
-const quantity = Number(existing.quantity);
-
-if (!Number.isFinite(quantity) || quantity <= 0) {
-  throw new Error(
-    "Invalid stock adjustment quantity"
-  );
-}
-
-// ========================================================
-// VALIDATE VARIANT
-// ========================================================
-
-if (!existing.variant) {
-  throw new Error(
-    `Variant is missing for StockAdjustment ${existing.adjustmentNo}`
-  );
-}
-
-// ========================================================
-// DETERMINE STOCK REVERSAL OPERATION
-// ========================================================
-
-/*
-  Original increase:
-    Stock + quantity
-
-  Delete:
-    Stock - quantity
-
-  Original decrease:
-    Stock - quantity
-
-  Delete:
-    Stock + quantity
-*/
-
-const reverseOperation =
-  existing.adjustmentType === "increase"
-    ? "adjustment_out"
-    : "adjustment_in";
-
-// ========================================================
-// DELETE REFERENCE
-// ========================================================
-
-const deleteReference =
-  `${existing.adjustmentNo}-DELETE`;
-
-// ========================================================
-// RESTORE / REVERSE STOCK
-// ========================================================
-
-await moveStock({
-  variantId: existing.variant,
-
-  batchId: existing.batch || null,
-
-  quantity,
-
-  operation: reverseOperation,
-
-  referenceId: existing._id,
-
-  referenceModel: "StockAdjustment",
-
-  referenceNumber: deleteReference,
-
-  store: existing.store || null,
-
-  warehouse: existing.warehouse || null,
-
-  createdBy: userId,
-
-  remarks:
-    `Stock restored because ${existing.adjustmentNo} was deleted`,
-
-  session,
+    return success(res, "Stock Adjustment updated successfully", populated);
+  } catch (error) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    session.endSession();
+    console.error("Update Stock Adjustment Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to update stock adjustment",
+    });
+  }
 });
 
-// ========================================================
-// SOFT DELETE STOCK ADJUSTMENT
-// ========================================================
+/* ============================================================
+   DELETE STOCK ADJUSTMENT (WITH INVENTORY REVERSAL)
+============================================================ */
+exports.deleteStockAdjustment = asyncHandler(async (req, res) => {
+  const { id } = req.params;
 
-existing.isDeleted = true;
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid Stock Adjustment ID",
+    });
+  }
 
-existing.deletedAt = new Date();
+  const userId = req.user?._id || req.user?.id || req.user?.userId;
+  if (!userId) {
+    return res.status(401).json({
+      success: false,
+      message: "Authenticated user not found",
+    });
+  }
 
-existing.deletedBy = userId;
+  const session = await mongoose.startSession();
 
-existing.updatedBy = userId;
+  try {
+    session.startTransaction();
 
-await existing.save({
-  session,
+    const existing = await StockAdjustment.findById(id).session(session);
+    if (!existing) {
+      await session.abortTransaction();
+      session.endSession();
+      return res.status(404).json({
+        success: false,
+        message: "Stock Adjustment not found",
+      });
+    }
+
+    const quantity = Number(existing.quantity);
+    const reverseOperation =
+      existing.adjustmentType === "increase"
+        ? "adjustment_out"
+        : "adjustment_in";
+
+    await moveStock({
+      variantId: existing.variant,
+      batchId: existing.batch || null,
+      quantity,
+      operation: reverseOperation,
+      referenceId: existing._id,
+      referenceModel: "StockAdjustment",
+      referenceNumber: `${existing.adjustmentNo}-DELETE`,
+      store: existing.store,
+      warehouse: existing.warehouse || null,
+      createdBy: userId,
+      remarks: `Stock reversed because ${existing.adjustmentNo} was deleted`,
+      session,
+    });
+
+    await StockAdjustment.findByIdAndDelete(id).session(session);
+
+    await session.commitTransaction();
+    session.endSession();
+
+    return res.status(200).json({
+      success: true,
+      message: "Stock Adjustment deleted permanently and stock reversed",
+      data: {
+        id: existing._id,
+        adjustmentNo: existing.adjustmentNo,
+      },
+    });
+  } catch (error) {
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+    session.endSession();
+    console.error("Delete Stock Adjustment Error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to delete Stock Adjustment",
+    });
+  }
 });
-
-// ========================================================
-// COMMIT TRANSACTION
-// ========================================================
-
-await session.commitTransaction();
-
-session.endSession();
-
-// ========================================================
-// SUCCESS RESPONSE
-// ========================================================
-
-return res.status(200).json({
-  success: true,
-  message: "StockAdjustment deleted successfully",
-  data: {
-    adjustmentId: existing._id,
-    adjustmentNo: existing.adjustmentNo,
-    isDeleted: existing.isDeleted,
-    deletedAt: existing.deletedAt,
-    deletedBy: existing.deletedBy,
-  },
-});
-
-} catch (error) {// ========================================================// ROLLBACK// ========================================================
-
-if (session.inTransaction()) {
-  await session.abortTransaction();
-}
-
-session.endSession();
-
-console.error(
-  "Delete StockAdjustment Error:",
-  error
-);
-
-return res.status(500).json({
-  success: false,
-  message:
-    error.message ||
-    "Failed to delete StockAdjustment",
-});
-
-}});

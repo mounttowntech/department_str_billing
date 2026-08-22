@@ -1,11 +1,46 @@
-const router = require("express").Router();
-const c = require("../controllers/StockAdjustmentController");
-const { verifyToken} = require("../middleware/authMiddleware"); 
+const express = require("express");
 
-router.post("/create", verifyToken, c.createStockAdjustment);
-router.get("/all", verifyToken, c.getAllStockAdjustment);
-router.get("/:id", verifyToken, c.getStockAdjustmentById);
-router.put("/update/:id", verifyToken, c.updateStockAdjustment);
-router.delete("/delete/:id", verifyToken, c.deleteStockAdjustment);
+const router = express.Router();
+
+const {
+  verifyToken,
+} = require("../middleware/authMiddleware");
+
+const stockAdjustmentController = require("../controllers/StockAdjustmentController");
+
+// GET ALL
+router.get(
+  "/all",
+  verifyToken,
+  stockAdjustmentController.getAllStockAdjustment
+);
+
+// GET BY ID
+router.get(
+  "/:id",
+  verifyToken,
+  stockAdjustmentController.getStockAdjustmentById
+);
+
+// CREATE
+router.post(
+  "/create",
+  verifyToken,
+  stockAdjustmentController.createStockAdjustment
+);
+
+// UPDATE
+router.put(
+  "/update/:id",
+  verifyToken,
+  stockAdjustmentController.updateStockAdjustment
+);
+
+// PERMANENT DELETE
+router.delete(
+  "/delete/:id",
+  verifyToken,
+  stockAdjustmentController.deleteStockAdjustment
+);
 
 module.exports = router;

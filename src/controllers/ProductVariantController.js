@@ -2,9 +2,6 @@ const path = require("path");
 const fs = require("fs");
 const ProductVariant = require("../models/ProductVariant");
 
-// Removes an uploaded file from disk given its stored relative URL
-// (e.g. "/uploads/variants/169..-abc.png"). Safe to call with an
-// empty/undefined path.
 const removeFile = (relativePath) => {
   if (!relativePath) return;
 

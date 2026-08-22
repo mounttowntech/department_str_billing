@@ -1,34 +1,70 @@
 const mongoose = require("mongoose");
 
 const HoldBill = require("../models/HoldBill");
-const SalesInvoice = require("../models/SalesInvoice"); // <-- ADD THIS
+const SalesInvoice = require("../models/SalesInvoice");
 const Customer = require("../models/Customer");
 const Store = require("../models/Store");
 const Product = require("../models/Product");
 const ProductVariant = require("../models/ProductVariant");
 const Batch = require("../models/Batch");
-/* ==========================================
-   Generate Hold Number
-========================================== */
 
-const generateHoldNo = async () => {
-  const lastHold = await HoldBill.findOne()
+/* =========================================================
+   GENERATE HOLD NUMBER
+========================================================= */
+
+const generateHoldNo = async (session = null) => {
+  const query = HoldBill.findOne()
     .sort({ createdAt: -1 })
     .select("holdNo");
+
+  if (session) {
+    query.session(session);
+  }
+
+  const lastHold = await query;
 
   let nextNumber = 1;
 
   if (lastHold && lastHold.holdNo) {
-    const number = parseInt(lastHold.holdNo.replace("HB", "")) || 0;
+    const number =
+      parseInt(String(lastHold.holdNo).replace("HB", "")) || 0;
+
     nextNumber = number + 1;
   }
 
   return `HB${String(nextNumber).padStart(6, "0")}`;
 };
 
-/* ==========================================
-   Create Hold Bill
-========================================== */
+
+/* =========================================================
+   GENERATE UNIQUE INVOICE NUMBER
+   Example:
+   INV20260821143512345678
+========================================================= */
+
+const generateInvoiceNo = () => {
+  const now = new Date();
+
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+
+  const hours = String(now.getHours()).padStart(2, "0");
+  const minutes = String(now.getMinutes()).padStart(2, "0");
+  const seconds = String(now.getSeconds()).padStart(2, "0");
+
+  const milliseconds = String(now.getMilliseconds()).padStart(3, "0");
+
+  // Extra random part prevents collision during simultaneous requests
+  const random = Math.floor(100 + Math.random() * 900);
+
+  return `INV${year}${month}${day}${hours}${minutes}${seconds}${milliseconds}${random}`;
+};
+
+
+/* =========================================================
+   CREATE HOLD BILL
+========================================================= */
 
 exports.createHoldBill = async (req, res) => {
   const session = await mongoose.startSession();
@@ -36,11 +72,17 @@ exports.createHoldBill = async (req, res) => {
   try {
     session.startTransaction();
 
-    const { customer, store, cashier, remarks, items } = req.body;
+    const {
+      customer,
+      store,
+      cashier,
+      remarks,
+      items,
+    } = req.body;
 
-    /* ===========================
-       Required Validation
-    =========================== */
+    /* -------------------------
+       STORE REQUIRED
+    ------------------------- */
 
     if (!store) {
       await session.abortTransaction();
@@ -52,7 +94,11 @@ exports.createHoldBill = async (req, res) => {
       });
     }
 
-    if (!items || !Array.isArray(items) || items.length === 0) {
+    /* -------------------------
+       ITEMS REQUIRED
+    ------------------------- */
+
+    if (!Array.isArray(items) || items.length === 0) {
       await session.abortTransaction();
       session.endSession();
 
@@ -62,18 +108,19 @@ exports.createHoldBill = async (req, res) => {
       });
     }
 
-    /* ===========================
-       Generate Hold Number
-    =========================== */
+    /* -------------------------
+       GENERATE HOLD NUMBER
+    ------------------------- */
 
-    const holdNo = await generateHoldNo();
+    const holdNo = await generateHoldNo(session);
 
-    /* ===========================
-       Customer Validation
-    =========================== */
+    /* -------------------------
+       CUSTOMER VALIDATION
+    ------------------------- */
 
     if (customer) {
-      const customerData = await Customer.findById(customer).session(session);
+      const customerData = await Customer.findById(customer)
+        .session(session);
 
       if (!customerData) {
         await session.abortTransaction();
@@ -86,11 +133,12 @@ exports.createHoldBill = async (req, res) => {
       }
     }
 
-    /* ===========================
-       Store Validation
-    =========================== */
+    /* -------------------------
+       STORE VALIDATION
+    ------------------------- */
 
-    const storeData = await Store.findById(store).session(session);
+    const storeData = await Store.findById(store)
+      .session(session);
 
     if (!storeData) {
       await session.abortTransaction();
@@ -102,14 +150,15 @@ exports.createHoldBill = async (req, res) => {
       });
     }
 
-    /* ===========================
-       Validate Items
-    =========================== */
+    /* -------------------------
+       VALIDATE ITEMS
+    ------------------------- */
 
     const holdItems = [];
 
     for (const item of items) {
-      const product = await Product.findById(item.product).session(session);
+      const product = await Product.findById(item.product)
+        .session(session);
 
       if (!product) {
         await session.abortTransaction();
@@ -122,9 +171,8 @@ exports.createHoldBill = async (req, res) => {
       }
 
       if (item.variant) {
-        const variant = await ProductVariant.findById(item.variant).session(
-          session,
-        );
+        const variant = await ProductVariant.findById(item.variant)
+          .session(session);
 
         if (!variant) {
           await session.abortTransaction();
@@ -138,7 +186,8 @@ exports.createHoldBill = async (req, res) => {
       }
 
       if (item.batch) {
-        const batch = await Batch.findById(item.batch).session(session);
+        const batch = await Batch.findById(item.batch)
+          .session(session);
 
         if (!batch) {
           await session.abortTransaction();
@@ -175,9 +224,9 @@ exports.createHoldBill = async (req, res) => {
       });
     }
 
-    /* ===========================
-       Create Hold Bill
-    =========================== */
+    /* -------------------------
+       CREATE HOLD BILL
+    ------------------------- */
 
     const holdBill = new HoldBill({
       holdNo,
@@ -194,9 +243,9 @@ exports.createHoldBill = async (req, res) => {
     await session.commitTransaction();
     session.endSession();
 
-    /* ===========================
-       Populate Response
-    =========================== */
+    /* -------------------------
+       POPULATE RESPONSE
+    ------------------------- */
 
     const result = await HoldBill.findById(holdBill._id)
       .populate("customer", "customerName customerCode")
@@ -212,8 +261,12 @@ exports.createHoldBill = async (req, res) => {
       message: "Hold Bill created successfully",
       data: result,
     });
+
   } catch (error) {
-    await session.abortTransaction();
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+
     session.endSession();
 
     console.error("Create Hold Bill Error:", error);
@@ -225,49 +278,30 @@ exports.createHoldBill = async (req, res) => {
   }
 };
 
+
+/* =========================================================
+   GET ALL HOLD BILLS
+========================================================= */
+
 exports.getAllHoldBills = async (req, res) => {
   try {
     const {
       page = 1,
-
       limit = 10,
-
       search,
-
       status,
-
       customer,
-
       store,
-
       cashier,
-
       fromDate,
-
       toDate,
-
       sortBy = "createdAt",
-
       order = "desc",
     } = req.query;
 
-    /* ===============================
-
-       Pagination
-
-    =============================== */
-
-    const pageNumber = Math.max(parseInt(page), 1);
-
-    const pageSize = Math.max(parseInt(limit), 1);
-
+    const pageNumber = Math.max(parseInt(page) || 1, 1);
+    const pageSize = Math.max(parseInt(limit) || 10, 1);
     const skip = (pageNumber - 1) * pageSize;
-
-    /* ===============================
-
-       Filters
-
-    =============================== */
 
     const filter = {
       isDeleted: false,
@@ -289,11 +323,9 @@ exports.getAllHoldBills = async (req, res) => {
       filter.cashier = cashier;
     }
 
-    /* ===============================
-
-       Date Filter
-
-    =============================== */
+    /* -------------------------
+       DATE FILTER
+    ------------------------- */
 
     if (fromDate || toDate) {
       filter.createdAt = {};
@@ -311,144 +343,130 @@ exports.getAllHoldBills = async (req, res) => {
       }
     }
 
-    /* ===============================
-
-       Search
-
-    =============================== */
+    /* -------------------------
+       SEARCH
+    ------------------------- */
 
     if (search) {
       filter.$or = [
         {
           holdNo: {
             $regex: search,
-
             $options: "i",
           },
         },
-
         {
           remarks: {
             $regex: search,
-
             $options: "i",
           },
         },
-
         {
           "items.productName": {
             $regex: search,
-
             $options: "i",
           },
         },
-
         {
           "items.skuCode": {
             $regex: search,
-
             $options: "i",
           },
         },
-
         {
           "items.barcode": {
             $regex: search,
-
             $options: "i",
           },
         },
       ];
     }
 
-    /* ===============================
-
-       Sorting
-
-    =============================== */
+    /* -------------------------
+       SORT
+    ------------------------- */
 
     const sort = {};
 
     sort[sortBy] = order === "asc" ? 1 : -1;
 
-    /* ===============================
-
-       Fetch Data
-
-    =============================== */
+    /* -------------------------
+       FETCH
+    ------------------------- */
 
     const holdBills = await HoldBill.find(filter)
-
-      .populate("customer", "customerCode customerName phone")
-
-      .populate("store", "storeCode storeName")
-
-      .populate("cashier", "firstName lastName")
-
-      .populate("salesInvoice", "invoiceNo grandTotal")
-
-      .populate("createdBy", "firstName lastName")
-
-      .populate("items.product", "productCode productName")
-
-      .populate("items.variant", "variantName skuCode")
-
-      .populate("items.batch", "batchNumber")
-
+      .populate(
+        "customer",
+        "customerCode customerName phone"
+      )
+      .populate(
+        "store",
+        "storeCode storeName"
+      )
+      .populate(
+        "cashier",
+        "firstName lastName"
+      )
+      .populate(
+        "salesInvoice",
+        "invoiceNo grandTotal"
+      )
+      .populate(
+        "createdBy",
+        "firstName lastName"
+      )
+      .populate(
+        "items.product",
+        "productCode productName"
+      )
+      .populate(
+        "items.variant",
+        "variantName skuCode"
+      )
+      .populate(
+        "items.batch",
+        "batchNumber"
+      )
       .sort(sort)
-
       .skip(skip)
-
       .limit(pageSize);
-
-    /* ===============================
-
-       Total Count
-
-    =============================== */
 
     const totalRecords = await HoldBill.countDocuments(filter);
 
-    /* ===============================
-
-       Response
-
-    =============================== */
+    const totalPages = Math.ceil(
+      totalRecords / pageSize
+    );
 
     return res.status(200).json({
       success: true,
-
       message: "Hold Bills fetched successfully",
 
       pagination: {
         currentPage: pageNumber,
-
         perPage: pageSize,
-
         totalRecords,
-
-        totalPages: Math.ceil(totalRecords / pageSize),
-
-        hasNextPage: pageNumber < Math.ceil(totalRecords / pageSize),
-
+        totalPages,
+        hasNextPage: pageNumber < totalPages,
         hasPreviousPage: pageNumber > 1,
       },
 
       data: holdBills,
     });
+
   } catch (error) {
     console.error("Get Hold Bills Error:", error);
 
     return res.status(500).json({
       success: false,
-
       message: error.message,
     });
   }
 };
-/* ==========================================
-   Get Hold Bill By ID
-========================================== */
+
+
+/* =========================================================
+   GET HOLD BILL BY ID
+========================================================= */
 
 exports.getHoldBillById = async (req, res) => {
   try {
@@ -456,15 +474,42 @@ exports.getHoldBillById = async (req, res) => {
       _id: req.params.id,
       isDeleted: false,
     })
-      .populate("customer", "customerCode customerName phone")
-      .populate("store", "storeCode storeName")
-      .populate("cashier", "firstName lastName")
-      .populate("salesInvoice", "invoiceNo grandTotal")
-      .populate("createdBy", "firstName lastName")
-      .populate("updatedBy", "firstName lastName")
-      .populate("items.product", "productCode productName")
-      .populate("items.variant", "variantName skuCode")
-      .populate("items.batch", "batchNumber");
+      .populate(
+        "customer",
+        "customerCode customerName phone"
+      )
+      .populate(
+        "store",
+        "storeCode storeName"
+      )
+      .populate(
+        "cashier",
+        "firstName lastName"
+      )
+      .populate(
+        "salesInvoice",
+        "invoiceNo grandTotal"
+      )
+      .populate(
+        "createdBy",
+        "firstName lastName"
+      )
+      .populate(
+        "updatedBy",
+        "firstName lastName"
+      )
+      .populate(
+        "items.product",
+        "productCode productName"
+      )
+      .populate(
+        "items.variant",
+        "variantName skuCode"
+      )
+      .populate(
+        "items.batch",
+        "batchNumber"
+      );
 
     if (!holdBill) {
       return res.status(404).json({
@@ -477,16 +522,21 @@ exports.getHoldBillById = async (req, res) => {
       success: true,
       data: holdBill,
     });
+
   } catch (error) {
+    console.error("Get Hold Bill By ID Error:", error);
+
     return res.status(500).json({
       success: false,
       message: error.message,
     });
   }
 };
-/* ==========================================
-   Update Hold Bill
-========================================== */
+
+
+/* =========================================================
+   UPDATE HOLD BILL
+========================================================= */
 
 exports.updateHoldBill = async (req, res) => {
   const session = await mongoose.startSession();
@@ -509,10 +559,32 @@ exports.updateHoldBill = async (req, res) => {
       });
     }
 
-    const { customer, store, cashier, remarks, status, items } = req.body;
+    if (holdBill.status === "Converted") {
+      await session.abortTransaction();
+      session.endSession();
+
+      return res.status(400).json({
+        success: false,
+        message: "Converted Hold Bill cannot be updated",
+      });
+    }
+
+    const {
+      customer,
+      store,
+      cashier,
+      remarks,
+      status,
+      items,
+    } = req.body;
+
+    /* -------------------------
+       CUSTOMER
+    ------------------------- */
 
     if (customer) {
-      const customerData = await Customer.findById(customer).session(session);
+      const customerData = await Customer.findById(customer)
+        .session(session);
 
       if (!customerData) {
         await session.abortTransaction();
@@ -527,8 +599,13 @@ exports.updateHoldBill = async (req, res) => {
       holdBill.customer = customer;
     }
 
+    /* -------------------------
+       STORE
+    ------------------------- */
+
     if (store) {
-      const storeData = await Store.findById(store).session(session);
+      const storeData = await Store.findById(store)
+        .session(session);
 
       if (!storeData) {
         await session.abortTransaction();
@@ -555,11 +632,16 @@ exports.updateHoldBill = async (req, res) => {
       holdBill.status = status;
     }
 
+    /* -------------------------
+       ITEMS
+    ------------------------- */
+
     if (Array.isArray(items)) {
       const updatedItems = [];
 
       for (const item of items) {
-        const product = await Product.findById(item.product).session(session);
+        const product = await Product.findById(item.product)
+          .session(session);
 
         if (!product) {
           await session.abortTransaction();
@@ -571,10 +653,20 @@ exports.updateHoldBill = async (req, res) => {
           });
         }
 
+        if (Number(item.quantity) <= 0) {
+          await session.abortTransaction();
+          session.endSession();
+
+          return res.status(400).json({
+            success: false,
+            message: `${item.productName} quantity must be greater than zero`,
+          });
+        }
+
         if (item.variant) {
-          const variant = await ProductVariant.findById(item.variant).session(
-            session,
-          );
+          const variant = await ProductVariant.findById(
+            item.variant
+          ).session(session);
 
           if (!variant) {
             await session.abortTransaction();
@@ -588,7 +680,9 @@ exports.updateHoldBill = async (req, res) => {
         }
 
         if (item.batch) {
-          const batch = await Batch.findById(item.batch).session(session);
+          const batch = await Batch.findById(
+            item.batch
+          ).session(session);
 
           if (!batch) {
             await session.abortTransaction();
@@ -618,27 +712,48 @@ exports.updateHoldBill = async (req, res) => {
       holdBill.items = updatedItems;
     }
 
-    holdBill.updatedBy = req.user?._id || req.user?.id;
+    holdBill.updatedBy =
+      req.user?._id || req.user?.id;
 
     await holdBill.save({ session });
 
     await session.commitTransaction();
     session.endSession();
 
-    const result = await HoldBill.findById(holdBill._id)
-      .populate("customer", "customerCode customerName")
-      .populate("store", "storeName")
-      .populate("cashier", "firstName lastName")
-      .populate("items.product", "productName productCode");
+    const result = await HoldBill.findById(
+      holdBill._id
+    )
+      .populate(
+        "customer",
+        "customerCode customerName"
+      )
+      .populate(
+        "store",
+        "storeName"
+      )
+      .populate(
+        "cashier",
+        "firstName lastName"
+      )
+      .populate(
+        "items.product",
+        "productName productCode"
+      );
 
     return res.status(200).json({
       success: true,
       message: "Hold Bill updated successfully",
       data: result,
     });
+
   } catch (error) {
-    await session.abortTransaction();
+    if (session.inTransaction()) {
+      await session.abortTransaction();
+    }
+
     session.endSession();
+
+    console.error("Update Hold Bill Error:", error);
 
     return res.status(500).json({
       success: false,
@@ -648,103 +763,82 @@ exports.updateHoldBill = async (req, res) => {
 };
 
 
-
-/* ==========================================
-   Generate Invoice Number
-========================================== */
-
-const generateInvoiceNo = async () => {
-
-  const lastInvoice = await SalesInvoice
-    .findOne()
-    .sort({ createdAt: -1 })
-    .select("invoiceNo");
-
-  let nextNumber = 1;
-
-  if (lastInvoice && lastInvoice.invoiceNo) {
-
-    const number = parseInt(
-      lastInvoice.invoiceNo.replace(/\D/g, "")
-    );
-
-    nextNumber = (number || 0) + 1;
-  }
-
-  return `INV${String(nextNumber).padStart(6, "0")}`;
-};
-
-/* ==========================================
-   Convert Hold Bill To Sales Invoice
-========================================== */
+/* =========================================================
+   CONVERT HOLD BILL TO SALES INVOICE
+========================================================= */
 
 exports.convertHoldBillToInvoice = async (req, res) => {
-
   const session = await mongoose.startSession();
 
   try {
-
     session.startTransaction();
 
-    /* ==========================================
-       Load Hold Bill
-    ========================================== */
+    /* =====================================================
+       STEP 1
+       ATOMICALLY LOCK HOLD BILL
+    ===================================================== */
 
-    const holdBill = await HoldBill.findOne({
-      _id: req.params.id,
-      isDeleted: false,
-    })
+    const holdBill = await HoldBill.findOneAndUpdate(
+      {
+        _id: req.params.id,
+        isDeleted: false,
+
+        // Do not allow another conversion
+        status: {
+          $nin: ["Converted", "Converting"],
+        },
+
+        // Do not allow conversion if invoice already exists
+        $or: [
+          {
+            salesInvoice: {
+              $exists: false,
+            },
+          },
+          {
+            salesInvoice: null,
+          },
+        ],
+      },
+      {
+        $set: {
+          status: "Converting",
+          updatedBy:
+            req.user?._id || req.user?.id,
+        },
+      },
+      {
+        new: true,
+        session,
+      }
+    )
       .populate("items.product")
       .populate("items.variant")
-      .populate("items.batch")
-      .session(session);
+      .populate("items.batch");
+
+    /* =====================================================
+       HOLD BILL NOT AVAILABLE
+    ===================================================== */
 
     if (!holdBill) {
-
-      await session.abortTransaction();
-      session.endSession();
-
-      return res.status(404).json({
-        success: false,
-        message: "Hold Bill not found",
-      });
-
-    }
-
-    /* ==========================================
-       Already Converted
-    ========================================== */
-
-    if (holdBill.status === "Converted") {
-
       await session.abortTransaction();
       session.endSession();
 
       return res.status(400).json({
         success: false,
-        message: "Hold Bill already converted",
+        message:
+          "Hold Bill is already converted or currently being converted",
       });
-
     }
 
-    if (holdBill.salesInvoice) {
+    /* =====================================================
+       ITEMS VALIDATION
+    ===================================================== */
 
-      await session.abortTransaction();
-      session.endSession();
-
-      return res.status(400).json({
-        success: false,
-        message: "Sales Invoice already generated for this Hold Bill",
-      });
-
-    }
-
-    /* ==========================================
-       Items Validation
-    ========================================== */
-
-    if (!holdBill.items || holdBill.items.length === 0) {
-
+    if (
+      !holdBill.items ||
+      holdBill.items.length === 0
+    ) {
       await session.abortTransaction();
       session.endSession();
 
@@ -752,337 +846,459 @@ exports.convertHoldBillToInvoice = async (req, res) => {
         success: false,
         message: "Hold Bill has no items",
       });
-
     }
 
-    /* ==========================================
-       Generate Invoice Number
-    ========================================== */
+    /* =====================================================
+       PREPARE INVOICE ITEMS
+    ===================================================== */
 
-    const invoiceNo = await generateInvoiceNo();
+    const invoiceItems = [];
 
-/* ==========================================
-   Validate Stock & Prepare Invoice Items
-========================================== */
+    for (const item of holdBill.items) {
+      /* ===================================================
+         PRODUCT
+      =================================================== */
 
-const invoiceItems = [];
+      const productId =
+        item.product?._id || item.product;
 
-for (const item of holdBill.items) {
+      const product = await Product.findById(
+        productId
+      ).session(session);
 
-  /* ===============================
-     Product Validation
-  =============================== */
+      if (!product) {
+        throw new Error(
+          `${item.productName} not found`
+        );
+      }
 
-  const product = await Product.findById(item.product._id).session(session);
+      const quantity = Number(item.quantity);
 
-  if (!product) {
+      if (quantity <= 0) {
+        throw new Error(
+          `${item.productName} quantity must be greater than zero`
+        );
+      }
 
-    await session.abortTransaction();
-    session.endSession();
+      /* ===================================================
+         PRODUCT STOCK
+      =================================================== */
 
-    return res.status(404).json({
-      success: false,
-      message: `${item.productName} not found`,
+      if (
+        Number(product.totalStock) < quantity
+      ) {
+        throw new Error(
+          `${item.productName} stock not available`
+        );
+      }
+
+      /* ===================================================
+         VARIANT
+      =================================================== */
+
+      let variantId = null;
+
+      if (item.variant) {
+        variantId =
+          item.variant?._id || item.variant;
+
+        const variant =
+          await ProductVariant.findById(
+            variantId
+          ).session(session);
+
+        if (!variant) {
+          throw new Error(
+            `${item.productName} variant not found`
+          );
+        }
+
+        if (
+          Number(variant.currentStock) <
+          quantity
+        ) {
+          throw new Error(
+            `${variant.variantName} stock not available`
+          );
+        }
+      }
+
+      /* ===================================================
+         BATCH
+      =================================================== */
+
+      let batchId = null;
+
+      if (item.batch) {
+        batchId =
+          item.batch?._id || item.batch;
+
+        const batch =
+          await Batch.findById(batchId)
+            .session(session);
+
+        if (!batch) {
+          throw new Error(
+            "Batch not found"
+          );
+        }
+
+        if (
+          Number(batch.remainingQuantity) <
+          quantity
+        ) {
+          throw new Error(
+            `Batch stock not available for ${item.productName}`
+          );
+        }
+      }
+
+      /* ===================================================
+         INVOICE ITEM
+      =================================================== */
+
+      invoiceItems.push({
+        product: productId,
+
+        variant: variantId,
+
+        batch: batchId,
+
+        skuCode: item.skuCode,
+
+        barcode: item.barcode,
+
+        productName: item.productName,
+
+        quantity,
+
+        price: Number(item.salesPrice),
+
+        discount: Number(
+          item.discount || 0
+        ),
+
+        gstPercentage: Number(
+          item.gstPercentage || 0
+        ),
+      });
+    }
+
+    /* =====================================================
+       CREATE SALES INVOICE
+       WITH RETRY FOR DUPLICATE INVOICE NUMBER
+    ===================================================== */
+
+    let salesInvoice = null;
+    let invoiceCreated = false;
+
+    for (let attempt = 1; attempt <= 5; attempt++) {
+      try {
+        const invoiceNo =
+          generateInvoiceNo();
+
+        salesInvoice = new SalesInvoice({
+          invoiceNo,
+
+          customer:
+            holdBill.customer,
+
+          store:
+            holdBill.store,
+
+          warehouse:
+            holdBill.warehouse,
+
+          invoiceDate:
+            new Date(),
+
+          billingType:
+            "POS",
+
+          customerType:
+            holdBill.customer
+              ? "Registered"
+              : "Walk-In",
+
+          paymentMethod:
+            "Cash",
+
+          paidAmount:
+            0,
+
+          remarks:
+            holdBill.remarks,
+
+          items:
+            invoiceItems,
+
+          createdBy:
+            req.user?._id ||
+            req.user?.id,
+        });
+
+        await salesInvoice.save({
+          session,
+        });
+
+        invoiceCreated = true;
+
+        break;
+
+      } catch (error) {
+        /* -----------------------------------------------
+           DUPLICATE INVOICE NUMBER
+        ----------------------------------------------- */
+
+        if (
+          error.code === 11000 &&
+          error.keyPattern?.invoiceNo
+        ) {
+          console.log(
+            `Duplicate invoice number detected. Retrying... Attempt ${attempt}`
+          );
+
+          salesInvoice = null;
+
+          continue;
+        }
+
+        throw error;
+      }
+    }
+
+    /* =====================================================
+       FAILED TO CREATE INVOICE
+    ===================================================== */
+
+    if (
+      !invoiceCreated ||
+      !salesInvoice
+    ) {
+      throw new Error(
+        "Unable to generate a unique invoice number. Please try again."
+      );
+    }
+
+    /* =====================================================
+       DEDUCT STOCK
+    ===================================================== */
+
+    for (const item of invoiceItems) {
+      const quantity =
+        Number(item.quantity);
+
+      /* -----------------------------------------------
+         PRODUCT STOCK
+      ----------------------------------------------- */
+
+      const updatedProduct =
+        await Product.findOneAndUpdate(
+          {
+            _id: item.product,
+
+            totalStock: {
+              $gte: quantity,
+            },
+          },
+          {
+            $inc: {
+              totalStock: -quantity,
+            },
+          },
+          {
+            new: true,
+            session,
+          }
+        );
+
+      if (!updatedProduct) {
+        throw new Error(
+          `${item.productName} stock became unavailable`
+        );
+      }
+
+      /* -----------------------------------------------
+         VARIANT STOCK
+      ----------------------------------------------- */
+
+      if (item.variant) {
+        const updatedVariant =
+          await ProductVariant.findOneAndUpdate(
+            {
+              _id: item.variant,
+
+              currentStock: {
+                $gte: quantity,
+              },
+            },
+            {
+              $inc: {
+                currentStock: -quantity,
+              },
+            },
+            {
+              new: true,
+              session,
+            }
+          );
+
+        if (!updatedVariant) {
+          throw new Error(
+            `${item.productName} variant stock became unavailable`
+          );
+        }
+      }
+
+      /* -----------------------------------------------
+         BATCH STOCK
+      ----------------------------------------------- */
+
+      if (item.batch) {
+        const updatedBatch =
+          await Batch.findOneAndUpdate(
+            {
+              _id: item.batch,
+
+              remainingQuantity: {
+                $gte: quantity,
+              },
+            },
+            {
+              $inc: {
+                remainingQuantity: -quantity,
+              },
+            },
+            {
+              new: true,
+              session,
+            }
+          );
+
+        if (!updatedBatch) {
+          throw new Error(
+            `Batch stock became unavailable for ${item.productName}`
+          );
+        }
+      }
+    }
+
+    /* =====================================================
+       UPDATE HOLD BILL
+    ===================================================== */
+
+    holdBill.status =
+      "Converted";
+
+    holdBill.salesInvoice =
+      salesInvoice._id;
+
+    holdBill.updatedBy =
+      req.user?._id ||
+      req.user?.id;
+
+    await holdBill.save({
+      session,
     });
 
-  }
+    /* =====================================================
+       COMMIT TRANSACTION
+    ===================================================== */
 
-  if (product.totalStock < Number(item.quantity)) {
-
-    await session.abortTransaction();
+    await session.commitTransaction();
     session.endSession();
 
-    return res.status(400).json({
-      success: false,
-      message: `${item.productName} stock not available`,
+    /* =====================================================
+       POPULATE INVOICE
+    ===================================================== */
+
+    const result =
+      await SalesInvoice.findById(
+        salesInvoice._id
+      )
+        .populate(
+          "customer",
+          "customerCode customerName phone"
+        )
+        .populate(
+          "store",
+          "storeCode storeName"
+        )
+        .populate(
+          "warehouse",
+          "warehouseCode warehouseName"
+        )
+        .populate(
+          "createdBy",
+          "firstName lastName"
+        )
+        .populate(
+          "items.product",
+          "productCode productName"
+        )
+        .populate(
+          "items.variant",
+          "variantName skuCode"
+        )
+        .populate(
+          "items.batch",
+          "batchNumber"
+        );
+
+    /* =====================================================
+       SUCCESS
+    ===================================================== */
+
+    return res.status(201).json({
+      success: true,
+      message:
+        "Hold Bill converted to Sales Invoice successfully",
+      data: result,
     });
 
-  }
+  } catch (error) {
+    /* =====================================================
+       ROLLBACK
+    ===================================================== */
 
-  /* ===============================
-     Variant Validation
-  =============================== */
-
-  if (item.variant) {
-
-    const variant = await ProductVariant.findById(
-      item.variant._id || item.variant
-    ).session(session);
-
-    if (!variant) {
-
+    if (session.inTransaction()) {
       await session.abortTransaction();
-      session.endSession();
-
-      return res.status(404).json({
-        success: false,
-        message: `${item.productName} variant not found`,
-      });
-
     }
 
-    if (variant.currentStock < Number(item.quantity)) {
+    session.endSession();
 
-      await session.abortTransaction();
-      session.endSession();
-
-      return res.status(400).json({
-        success: false,
-        message: `${variant.variantName} stock not available`,
-      });
-
-    }
-
-  }
-
-  /* ===============================
-     Batch Validation
-  =============================== */
-
-  if (item.batch) {
-
-    const batch = await Batch.findById(
-      item.batch._id || item.batch
-    ).session(session);
-
-    if (!batch) {
-
-      await session.abortTransaction();
-      session.endSession();
-
-      return res.status(404).json({
-        success: false,
-        message: "Batch not found",
-      });
-
-    }
-
-    if (batch.remainingQuantity < Number(item.quantity)) {
-
-      await session.abortTransaction();
-      session.endSession();
-
-      return res.status(400).json({
-        success: false,
-        message: `Batch stock not available for ${item.productName}`,
-      });
-
-    }
-
-  }
-
-  /* ===============================
-     Prepare Invoice Item
-  =============================== */
-
-  invoiceItems.push({
-
-    product: item.product._id || item.product,
-
-    variant: item.variant
-      ? item.variant._id || item.variant
-      : null,
-
-    batch: item.batch
-      ? item.batch._id || item.batch
-      : null,
-
-    skuCode: item.skuCode,
-
-    barcode: item.barcode,
-
-    productName: item.productName,
-
-    quantity: Number(item.quantity),
-
-    price: Number(item.salesPrice),
-
-    discount: Number(item.discount || 0),
-
-    gstPercentage: Number(item.gstPercentage || 0),
-
-  });
-
-}
-
-/* ==========================================
-   Create Sales Invoice
-========================================== */
-
-const salesInvoice = new SalesInvoice({
-
-  invoiceNo,
-
-  customer: holdBill.customer,
-
-  store: holdBill.store,
-
-  warehouse: holdBill.warehouse,
-
-  invoiceDate: new Date(),
-
-  billingType: "POS",
-
-  customerType: holdBill.customer
-    ? "Registered"
-    : "Walk-In",
-
-  paymentMethod: "Cash",
-
-  paidAmount: 0,
-
-  remarks: holdBill.remarks,
-
-  items: invoiceItems,
-
-  createdBy: req.user?._id || req.user?.id,
-
-});
-
-await salesInvoice.save({ session });
-
-/* ==========================================
-   Deduct Product Stock
-========================================== */
-
-for (const item of invoiceItems) {
-
-  await Product.findByIdAndUpdate(
-    item.product,
-    {
-      $inc: {
-        totalStock: -Number(item.quantity),
-      },
-    },
-    { session }
-  );
-
-  if (item.variant) {
-
-    await ProductVariant.findByIdAndUpdate(
-      item.variant,
-      {
-        $inc: {
-          currentStock: -Number(item.quantity),
-        },
-      },
-      { session }
+    console.error(
+      "Convert Hold Bill Error:",
+      error
     );
 
+    /* =====================================================
+       DUPLICATE KEY ERROR
+    ===================================================== */
+
+    if (
+      error.code === 11000 &&
+      error.keyPattern?.invoiceNo
+    ) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Invoice number conflict. Please try converting the Hold Bill again.",
+        error: error.message,
+      });
+    }
+
+    return res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
-
-  if (item.batch) {
-
-    await Batch.findByIdAndUpdate(
-      item.batch,
-      {
-        $inc: {
-          remainingQuantity: -Number(item.quantity),
-        },
-      },
-      { session }
-    );
-
-  }
-
-}
-
-/* ==========================================
-   Update Hold Bill
-========================================== */
-
-holdBill.status = "Converted";
-
-holdBill.salesInvoice = salesInvoice._id;
-
-holdBill.updatedBy = req.user?._id || req.user?.id;
-
-await holdBill.save({ session });
-
-/* ==========================================
-   Commit Transaction
-========================================== */
-
-await session.commitTransaction();
-
-session.endSession();
-
-/* ==========================================
-   Populate Invoice
-========================================== */
-
-const result = await SalesInvoice.findById(
-  salesInvoice._id
-)
-  .populate(
-    "customer",
-    "customerCode customerName phone"
-  )
-  .populate(
-    "store",
-    "storeCode storeName"
-  )
-  .populate(
-    "warehouse",
-    "warehouseCode warehouseName"
-  )
-  .populate(
-    "createdBy",
-    "firstName lastName"
-  )
-  .populate(
-    "items.product",
-    "productCode productName"
-  )
-  .populate(
-    "items.variant",
-    "variantName skuCode"
-  )
-  .populate(
-    "items.batch",
-    "batchNumber"
-  );
-
-/* ==========================================
-   Response
-========================================== */
-
-return res.status(201).json({
-
-  success: true,
-
-  message: "Hold Bill converted to Sales Invoice successfully",
-
-  data: result,
-
-});
-
-} catch (error) {
-
-  if (session.inTransaction()) {
-    await session.abortTransaction();
-  }
-
-  session.endSession();
-
-  console.error(
-    "Convert Hold Bill Error:",
-    error
-  );
-
-  return res.status(500).json({
-
-    success: false,
-
-    message: error.message,
-
-  });
-
-}
 };
-/* ==========================================
-   Delete Hold Bill
-========================================== */
+
+
+/* =========================================================
+   DELETE HOLD BILL
+========================================================= */
 
 exports.deleteHoldBill = async (req, res) => {
   try {
@@ -1098,24 +1314,37 @@ exports.deleteHoldBill = async (req, res) => {
       });
     }
 
-    if (holdBill.status === "Converted") {
+    if (
+      holdBill.status === "Converted" ||
+      holdBill.status === "Converting"
+    ) {
       return res.status(400).json({
         success: false,
-        message: "Converted Hold Bill cannot be deleted",
+        message:
+          "Converted or currently converting Hold Bill cannot be deleted",
       });
     }
 
     holdBill.isDeleted = true;
 
-    holdBill.updatedBy = req.user?._id || req.user?.id;
+    holdBill.updatedBy =
+      req.user?._id ||
+      req.user?.id;
 
     await holdBill.save();
 
     return res.status(200).json({
       success: true,
-      message: "Hold Bill deleted successfully",
+      message:
+        "Hold Bill deleted successfully",
     });
+
   } catch (error) {
+    console.error(
+      "Delete Hold Bill Error:",
+      error
+    );
+
     return res.status(500).json({
       success: false,
       message: error.message,
