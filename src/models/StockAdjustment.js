@@ -19,11 +19,13 @@ const stockAdjustmentSchema = new mongoose.Schema(
     warehouse: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Warehouse",
+      default: null,
     },
 
     batch: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Batch",
+      default: null,
     },
 
     product: {
@@ -41,6 +43,7 @@ const stockAdjustmentSchema = new mongoose.Schema(
     skuCode: {
       type: String,
       trim: true,
+      default: "",
     },
 
     adjustmentType: {
@@ -68,37 +71,8 @@ const stockAdjustmentSchema = new mongoose.Schema(
     reason: {
       type: String,
       trim: true,
+      default: "",
     },
-
-    // ======================================================
-    // DELETE / STATUS
-    // ======================================================
-
-    status: {
-      type: String,
-      enum: ["active", "deleted"],
-      default: "active",
-    },
-
-    isDeleted: {
-      type: Boolean,
-      default: false,
-    },
-
-    deletedAt: {
-      type: Date,
-      default: null,
-    },
-
-    deletedBy: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      default: null,
-    },
-
-    // ======================================================
-    // USERS
-    // ======================================================
 
     createdBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -126,10 +100,6 @@ stockAdjustmentSchema.index({
 stockAdjustmentSchema.index({
   variant: 1,
   createdAt: -1,
-});
-
-stockAdjustmentSchema.index({
-  isDeleted: 1,
 });
 
 module.exports = mongoose.model(

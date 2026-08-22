@@ -3,7 +3,6 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 const app = require("./app");
 
-
 const mongoURI =
   process.env.NODE_ENV === "production"
     ? process.env.MONGODB_ATLAS
@@ -31,4 +30,3 @@ mongoose
   .catch((err) => {
     console.log("❌ MongoDB Error:", err.message);
   });
-  

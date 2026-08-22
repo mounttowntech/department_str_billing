@@ -648,7 +648,7 @@ exports.updateSalesInvoice = async (req, res) => {
 
     invoice.paymentMethod = req.body.paymentMethod;
 
-    invoice.returnStatus = req.body.returnStatus || "none";
+    invoice.returnStatus = req.body.returnStatus || invoice.returnStatus || "None";
 
     invoice.remarks = req.body.remarks || "";
 

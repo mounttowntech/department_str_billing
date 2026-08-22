@@ -1,9 +1,42 @@
+const path = require("path");
+const fs = require("fs");
 const ProductVariant = require("../models/ProductVariant");
+
+const removeFile = (relativePath) => {
+  if (!relativePath) return;
+
+  const filePath = path.join(
+    __dirname,
+    "../../",
+    relativePath.replace(/^\/+/, "")
+  );
+
+  if (fs.existsSync(filePath)) {
+    fs.unlink(filePath, (err) => {
+      if (err) console.log("Failed to remove file:", err.message);
+    });
+  }
+};
+
+// Normalizes req.body.existingImageUrls to an array. When a FormData
+// field is appended multiple times, multer/Express gives you an array
+// automatically; with exactly one value it gives you a plain string;
+// with none, it's undefined.
+const toArray = (val) => {
+  if (val === undefined) return [];
+  return Array.isArray(val) ? val : [val];
+};
 
 exports.createVariant = async (req, res) => {
   try {
+    // New files uploaded via uploadVariantImages.array("images", 5)
+    const uploadedUrls = (req.files || []).map(
+      (file) => `/uploads/variants/${file.filename}`
+    );
+
     const variant = await ProductVariant.create({
       ...req.body,
+      imageUrls: uploadedUrls,
       createdBy: req.user?._id || req.user?.id,
     });
 
@@ -13,6 +46,11 @@ exports.createVariant = async (req, res) => {
       data: variant,
     });
   } catch (error) {
+    // Clean up any uploaded files if the DB write failed
+    (req.files || []).forEach((file) =>
+      removeFile(`/uploads/variants/${file.filename}`)
+    );
+
     if (error.code === 11000) {
       return res.status(400).json({
         success: false,
@@ -89,21 +127,45 @@ exports.getVariantById = async (req, res) => {
 
 exports.updateVariant = async (req, res) => {
   try {
-    const variant = await ProductVariant.findByIdAndUpdate(
-      req.params.id,
-      {
-        ...req.body,
-        updatedBy: req.user?._id || req.user?.id,
-      },
-      { new: true, runValidators: true }
-    );
+    const existing = await ProductVariant.findById(req.params.id);
 
-    if (!variant) {
+    if (!existing) {
+      (req.files || []).forEach((file) =>
+        removeFile(`/uploads/variants/${file.filename}`)
+      );
       return res.status(404).json({
         success: false,
         message: "Product variant not found",
       });
     }
+
+    const { existingImages, ...rest } = req.body;
+
+    // URLs the user chose to keep (already-saved images not removed in the UI)
+    const keptUrls = toArray(existingImages);
+
+    // Any newly picked files uploaded on this request
+    const newUrls = (req.files || []).map(
+      (file) => `/uploads/variants/${file.filename}`
+    );
+
+    // Whatever was on the document before but is NOT in keptUrls was
+    // removed by the user — delete those files from disk.
+    (existing.imageUrls || [])
+      .filter((url) => !keptUrls.includes(url))
+      .forEach((url) => removeFile(url));
+
+    const updates = {
+      ...rest,
+      imageUrls: [...keptUrls, ...newUrls],
+      updatedBy: req.user?._id || req.user?.id,
+    };
+
+    const variant = await ProductVariant.findByIdAndUpdate(
+      req.params.id,
+      updates,
+      { new: true, runValidators: true }
+    );
 
     res.json({
       success: true,
@@ -111,6 +173,10 @@ exports.updateVariant = async (req, res) => {
       data: variant,
     });
   } catch (error) {
+    (req.files || []).forEach((file) =>
+      removeFile(`/uploads/variants/${file.filename}`)
+    );
+
     if (error.code === 11000) {
       return res.status(400).json({
         success: false,
@@ -132,6 +198,8 @@ exports.deleteVariant = async (req, res) => {
         message: "Product variant not found",
       });
     }
+
+    (variant.imageUrls || []).forEach((url) => removeFile(url));
 
     return res.status(200).json({
       success: true,

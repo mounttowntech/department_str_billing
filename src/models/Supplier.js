@@ -62,10 +62,12 @@ const schema = new mongoose.Schema(
     address: String,
     city: String,
     state: String,
+
     country: {
       type: String,
       default: "India",
     },
+
     pincode: String,
 
     bankName: String,
@@ -117,7 +119,14 @@ const schema = new mongoose.Schema(
   }
 );
 
-schema.index({ store: 1, supplierCode: 1 }, { unique: true });
-schema.index({ store: 1, supplierName: 1 }, { unique: true });
+schema.index(
+  { store: 1, supplierCode: 1 },
+  { unique: true }
+);
+
+schema.index(
+  { store: 1, supplierName: 1 },
+  { unique: true }
+);
 
 module.exports = mongoose.model("Supplier", schema);

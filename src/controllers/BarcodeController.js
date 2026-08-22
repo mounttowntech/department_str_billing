@@ -107,14 +107,7 @@ exports.updateBarcode = asyncHandler(async (req, res) => {
 });
 
 exports.deleteBarcode = asyncHandler(async (req, res) => {
-  const data = await Model.findByIdAndUpdate(
-    req.params.id,
-    {
-      status: false,
-      updatedBy: req.user?._id || req.user?.id,
-    },
-    { new: true }
-  );
+  const data = await Model.findByIdAndDelete(req.params.id);
 
   if (!data) {
     return res.status(404).json({
@@ -123,5 +116,5 @@ exports.deleteBarcode = asyncHandler(async (req, res) => {
     });
   }
 
-  success(res, "Barcode deactivated", data);
+  success(res, "Barcode deleted successfully", data);
 });

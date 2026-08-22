@@ -13,13 +13,27 @@ const {
 } = require("../controllers/ProductVariantController");
 
 const { verifyToken } = require("../middleware/authMiddleware");
+const { uploadVariantImages } = require("../middleware/uploadVariantImages");
 
-router.post("/create", verifyToken, createVariant);
+router.post(
+  "/create",
+  verifyToken,
+  uploadVariantImages.array("images", 5),
+  createVariant
+);
+
 router.get("/all", verifyToken, getVariants);
 router.get("/low-stock", verifyToken, getLowStockVariants);
 router.get("/barcode/:barcode", verifyToken, getVariantByBarcode);
 router.get("/:id", verifyToken, getVariantById);
-router.put("/update/:id", verifyToken, updateVariant);
+
+router.put(
+  "/update/:id",
+  verifyToken,
+  uploadVariantImages.array("images", 5),
+  updateVariant
+);
+
 router.patch("/activate/:id", verifyToken, activateVariant);
 router.delete("/delete/:id", verifyToken, deleteVariant);
 

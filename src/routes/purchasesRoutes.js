@@ -38,7 +38,7 @@ router.get("/supplier/:supplierId", verifyToken, getPurchaseBySupplier);
 
 router.get("/:id", verifyToken, getPurchaseById);
 
-router.put("/udate/:id", verifyToken, updatePurchase);
+router.put("/update/:id", verifyToken, updatePurchase);
 
 router.delete("/delete/:id", verifyToken, deletePurchase);
 
