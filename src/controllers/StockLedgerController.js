@@ -1,9 +1,13 @@
+const mongoose = require("mongoose");
 const StockLedger = require("../models/StockLedger");
 const asyncHandler = require("../utils/asyncHandler");
 const response = require("../utils/responseHandler");
-const mongoose=require("mongoose");
+
 const success = response.success;
 
+/* ============================================================
+   CREATE STOCK LEDGER ENTRY
+============================================================ */
 exports.createStockLedger = asyncHandler(async (req, res) => {
   const {
     store,
@@ -24,225 +28,175 @@ exports.createStockLedger = asyncHandler(async (req, res) => {
     createdBy,
   } = req.body;
 
-  // Validation
-  if (!store)
+  const userId =
+    req.user?._id ||
+    req.user?.id ||
+    req.user?.userId ||
+    createdBy;
+
+  if (!userId) {
+    return res.status(401).json({
+      success: false,
+      message: "Authenticated user not found. Please log in again.",
+    });
+  }
+
+  if (!store) {
     return res.status(400).json({
       success: false,
       message: "Store is required",
     });
+  }
 
-  if (!product)
+  if (!product) {
     return res.status(400).json({
       success: false,
       message: "Product is required",
     });
+  }
 
-  if (!variant)
+  if (!variant) {
     return res.status(400).json({
       success: false,
       message: "Variant is required",
     });
+  }
 
-  if (!movementType)
+  if (!movementType) {
     return res.status(400).json({
       success: false,
       message: "Movement Type is required",
     });
+  }
 
-  if (!quantity)
+  if (!quantity || Number(quantity) <= 0) {
     return res.status(400).json({
       success: false,
-      message: "Quantity is required",
-    });
-
-  // Get createdBy from JWT or Postman
-  const userId = req.user?._id || createdBy;
-
-  if (!userId) {
-    return res.status(400).json({
-      success: false,
-      message: "createdBy is required",
+      message: "Quantity must be greater than 0",
     });
   }
 
   const ledger = await StockLedger.create({
     store,
-    warehouse,
-    batch,
+    warehouse: warehouse || null,
+    batch: batch || null,
     product,
     variant,
-    skuCode,
-    barcode,
+    skuCode: String(skuCode || "").trim().toUpperCase(),
+    barcode: barcode || "",
     movementType,
-    quantity,
-    beforeStock,
-    afterStock,
-    referenceId,
-    referenceModel,
-    referenceNumber,
-    remarks,
+    quantity: Number(quantity),
+    beforeStock: Number(beforeStock || 0),
+    afterStock: Number(afterStock || 0),
+    referenceId: referenceId || null,
+    referenceModel: referenceModel || "OpeningStock",
+    referenceNumber: referenceNumber?.trim() || "",
+    remarks: remarks?.trim() || "",
     createdBy: userId,
   });
 
   const data = await StockLedger.findById(ledger._id)
-    .populate("store")
-    .populate("warehouse")
-    .populate("batch")
-    .populate("product")
-    .populate("variant")
+    .populate("store", "storeName name")
+    .populate("warehouse", "warehouseName name")
+    .populate("batch", "batchNo")
+    .populate("product", "productName name")
+    .populate("variant", "variantName skuCode name")
     .populate("createdBy", "name email");
 
   return success(res, "Stock Ledger created successfully.", data, 201);
 });
 
-
+/* ============================================================
+   GET ALL STOCK LEDGER ENTRIES
+============================================================ */
 exports.getStockLedger = asyncHandler(async (req, res) => {
-
   const {
-
     page = 1,
-
-    limit = 10,
-
+    limit = 100,
     search,
-
     store,
-
     warehouse,
-
     product,
-
     variant,
-
     movementType,
-
     fromDate,
-
     toDate,
-
   } = req.query;
 
-
-
-  const filter = {};
-
-
+  const filter = {
+    isDeleted: { $ne: true },
+  };
 
   if (store) filter.store = store;
-
   if (warehouse) filter.warehouse = warehouse;
-
   if (product) filter.product = product;
-
   if (variant) filter.variant = variant;
-
   if (movementType) filter.movementType = movementType;
 
-
-
-  // Date Filter
-
   if (fromDate || toDate) {
-
     filter.createdAt = {};
 
-
-
     if (fromDate) {
-
       filter.createdAt.$gte = new Date(fromDate);
-
     }
-
-
 
     if (toDate) {
-
       const endDate = new Date(toDate);
-
       endDate.setHours(23, 59, 59, 999);
-
       filter.createdAt.$lte = endDate;
-
     }
-
   }
-
-
-
-  // Search SKU / Barcode / Reference Number
 
   if (search) {
-
     filter.$or = [
-
       { skuCode: { $regex: search, $options: "i" } },
-
       { barcode: { $regex: search, $options: "i" } },
-
       { referenceNumber: { $regex: search, $options: "i" } },
-
     ];
-
   }
 
-
-
   const skip = (Number(page) - 1) * Number(limit);
-
-
-
   const total = await StockLedger.countDocuments(filter);
 
-
-
   const data = await StockLedger.find(filter)
-
-    .populate("store", "storeName")
-
-    .populate("warehouse", "warehouseName")
-
+    .populate("store", "storeName name")
+    .populate("warehouse", "warehouseName name")
     .populate("batch", "batchNo")
-
-    .populate("product", "productName")
-
-    .populate("variant", "variantName skuCode")
-
+    .populate("product", "productName name")
+    .populate("variant", "variantName skuCode name")
     .populate("createdBy", "name email")
-
     .sort({ createdAt: -1 })
-
     .skip(skip)
-
     .limit(Number(limit));
 
-
-
-  success(res, "Stock ledger list fetched successfully.", {
-
+  return success(res, "Stock ledger list fetched successfully.", {
     total,
-
     currentPage: Number(page),
-
-    totalPages: Math.ceil(total / limit),
-
+    totalPages: Math.ceil(total / Number(limit)) || 1,
     count: data.length,
-
     data,
-
   });
-
 });
 
+/* ============================================================
+   GET STOCK LEDGER BY ID
+============================================================ */
 exports.getStockLedgerById = asyncHandler(async (req, res) => {
   const { id } = req.params;
 
-  const data = await StockLedger.findById(id)
-    .populate("store", "storeName")
-    .populate("warehouse", "warehouseName")
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid Stock Ledger ID",
+    });
+  }
+
+  const data = await StockLedger.findOne({ _id: id, isDeleted: { $ne: true } })
+    .populate("store", "storeName name")
+    .populate("warehouse", "warehouseName name")
     .populate("batch", "batchNo")
-    .populate("product", "productName")
-    .populate("variant", "variantName skuCode")
+    .populate("product", "productName name")
+    .populate("variant", "variantName skuCode name")
     .populate("createdBy", "name email");
 
   if (!data) {
@@ -252,25 +206,42 @@ exports.getStockLedgerById = asyncHandler(async (req, res) => {
     });
   }
 
-  success(res, "Stock ledger details fetched successfully.", data);
+  return success(res, "Stock ledger details fetched successfully.", data);
 });
 
+/* ============================================================
+   UPDATE STOCK LEDGER
+============================================================ */
 exports.updateStockLedgerById = asyncHandler(async (req, res) => {
+  const { id } = req.params;
+  const userId =
+    req.user?._id ||
+    req.user?.id ||
+    req.user?.userId;
+
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid Stock Ledger ID",
+    });
+  }
+
   const data = await StockLedger.findByIdAndUpdate(
-    req.params.id,
+    id,
     {
       ...req.body,
+      updatedBy: userId,
     },
     {
       new: true,
       runValidators: true,
     }
   )
-    .populate("store", "storeName")
-    .populate("warehouse", "warehouseName")
+    .populate("store", "storeName name")
+    .populate("warehouse", "warehouseName name")
     .populate("batch", "batchNo")
-    .populate("product", "productName")
-    .populate("variant", "variantName skuCode")
+    .populate("product", "productName name")
+    .populate("variant", "variantName skuCode name")
     .populate("createdBy", "name email");
 
   if (!data) {
@@ -280,133 +251,52 @@ exports.updateStockLedgerById = asyncHandler(async (req, res) => {
     });
   }
 
-  success(res, "Stock ledger updated successfully.", data);
+  return success(res, "Stock ledger updated successfully.", data);
 });
 
+/* ============================================================
+   DELETE STOCK LEDGER (SOFT DELETE)
+============================================================ */
+exports.deleteStockLedgerById = asyncHandler(async (req, res) => {
+  const { id } = req.params;
 
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    return res.status(400).json({
+      success: false,
+      message: "Invalid Stock Ledger ID",
+    });
+  }
 
+  const userId =
+    req.user?._id ||
+    req.user?.id ||
+    req.user?.userId;
 
-
-
-exports.deleteStockLedgerById = asyncHandler(async (req, res) => {const { id } = req.params;
-
-// ==========================================================
-// VALIDATE ID
-// ==========================================================
-
-if (!mongoose.Types.ObjectId.isValid(id)) {
-  return res.status(400).json({
-    success: false,
-    message: "Invalid Stock Ledger ID",
-  });
-}
-
-// ==========================================================
-// GET LOGGED-IN USER
-// ==========================================================
-
-const userId =
-  req.user?.id ||
-  req.user?._id ||
-  req.user?.userId;
-
-if (!userId) {
-  console.log(
-    "StockLedger Delete - req.user:",
-    req.user
-  );
-
-  return res.status(401).json({
-    success: false,
-    message: "Authenticated user not found",
-  });
-}
-
-// ==========================================================
-// FIND STOCK LEDGER
-// ==========================================================
-
-const ledger = await StockLedger.findById(id);
-
-if (!ledger) {
-  return res.status(404).json({
-    success: false,
-    message: "Stock ledger not found",
-  });
-}
-
-// ==========================================================
-// CHECK ALREADY DELETED
-// ==========================================================
-
-if (ledger.isDeleted === true) {
-  return res.status(400).json({
-    success: false,
-    message: "Stock ledger already deleted",
-  });
-}
-
-// ==========================================================
-// SOFT DELETE
-// ==========================================================
-
-const deletedAt = new Date();
-
-const updatedLedger =
-  await StockLedger.findOneAndUpdate(
-    {
-      _id: id,
-      isDeleted: {
-        $ne: true,
-      },
-    },
+  const deleted = await StockLedger.findByIdAndUpdate(
+    id,
     {
       $set: {
         isDeleted: true,
-        deletedAt: deletedAt,
-        deletedBy: userId,
+        deletedAt: new Date(),
+        deletedBy: userId || null,
       },
     },
-    {
-      new: true,
-      runValidators: false,
-    }
+    { new: true }
   );
 
-// ==========================================================
-// CHECK UPDATE
-// ==========================================================
+  if (!deleted) {
+    return res.status(404).json({
+      success: false,
+      message: "Stock ledger not found or already deleted.",
+    });
+  }
 
-if (!updatedLedger) {
-  return res.status(404).json({
-    success: false,
-    message:
-      "Stock ledger not found or already deleted",
+  return res.status(200).json({
+    success: true,
+    message: "Stock ledger deleted successfully.",
+    data: {
+      ledgerId: deleted._id,
+      referenceNumber: deleted.referenceNumber,
+    },
   });
-}
-
-// ==========================================================
-// SUCCESS
-// ==========================================================
-
-return res.status(200).json({
-  success: true,
-  message: "Stock ledger deleted successfully",
-  data: {
-    ledgerId: updatedLedger._id,
-    referenceNumber:
-      updatedLedger.referenceNumber,
-    movementType:
-      updatedLedger.movementType,
-    quantity:
-      updatedLedger.quantity,
-    isDeleted:
-      updatedLedger.isDeleted,
-    deletedAt:
-      updatedLedger.deletedAt,
-    deletedBy:
-      updatedLedger.deletedBy,
-  },
-});
-
 });

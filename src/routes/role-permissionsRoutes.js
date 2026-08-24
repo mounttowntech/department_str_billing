@@ -1,7 +1,7 @@
 const router = require("express").Router();
 
 const {
-   createRolePermission,
+  createRolePermission,
   getAllRolePermission,
   getRolePermissionById,
   updateRolePermission,
@@ -12,15 +12,32 @@ const {
 
 const { verifyToken } = require("../middleware/authMiddleware");
 
-router.post("/create", verifyToken, createRolePermission);
+// ==========================================================
+// PUBLIC - REQUIRED FOR REGISTRATION
+// ==========================================================
 
-router.get("/all", verifyToken, getAllRolePermission);
+router.get("/all", getAllRolePermission);
+
+// ==========================================================
+// PROTECTED - ROLE MANAGEMENT
+// ==========================================================
+
+router.post("/create", verifyToken, createRolePermission);
 
 router.get("/:id", verifyToken, getRolePermissionById);
 
 router.put("/update/:id", verifyToken, updateRolePermission);
 
-router.patch("/toggle/:id", verifyToken, toggleRolePermissionStatus);
+router.patch(
+  "/toggle/:id",
+  verifyToken,
+  toggleRolePermissionStatus
+);
 
-router.delete("/delete/:id", verifyToken, deleteRolePermission);
+router.delete(
+  "/delete/:id",
+  verifyToken,
+  deleteRolePermission
+);
+
 module.exports = router;
