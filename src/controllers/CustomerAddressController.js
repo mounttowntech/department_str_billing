@@ -1,5 +1,8 @@
 const CustomerAddress = require("../models/CustomerAddress");
 
+/* ============================================================
+   1. CREATE CUSTOMER ADDRESS
+============================================================ */
 exports.createCustomerAddress = async (req, res) => {
   try {
     if (req.body.isDefault) {
@@ -30,6 +33,9 @@ exports.createCustomerAddress = async (req, res) => {
   }
 };
 
+/* ============================================================
+   2. GET ALL CUSTOMER ADDRESSES
+============================================================ */
 exports.getAllCustomerAddress = async (req, res) => {
   try {
     const { store, customer, status, label } = req.query;
@@ -60,6 +66,9 @@ exports.getAllCustomerAddress = async (req, res) => {
   }
 };
 
+/* ============================================================
+   3. GET CUSTOMER ADDRESS BY ID
+============================================================ */
 exports.getCustomerAddressById = async (req, res) => {
   try {
     const address = await CustomerAddress.findById(req.params.id)
@@ -85,6 +94,9 @@ exports.getCustomerAddressById = async (req, res) => {
   }
 };
 
+/* ============================================================
+   4. UPDATE CUSTOMER ADDRESS
+============================================================ */
 exports.updateCustomerAddress = async (req, res) => {
   try {
     const oldAddress = await CustomerAddress.findById(req.params.id);
@@ -131,16 +143,12 @@ exports.updateCustomerAddress = async (req, res) => {
   }
 };
 
-exports.deleteCustomerAddress = async (req, res) => {
+/* ============================================================
+   5. TOGGLE STATUS (ACTIVE <-> INACTIVE IN ONE)
+============================================================ */
+exports.toggleCustomerAddressStatus = async (req, res) => {
   try {
-    const address = await CustomerAddress.findByIdAndUpdate(
-      req.params.id,
-      {
-        status: "inactive",
-        updatedBy: req.user?.id,
-      },
-      { new: true }
-    );
+    const address = await CustomerAddress.findById(req.params.id);
 
     if (!address) {
       return res.status(404).json({
@@ -149,9 +157,16 @@ exports.deleteCustomerAddress = async (req, res) => {
       });
     }
 
+    // Toggle active <-> inactive
+    const newStatus = address.status === "active" ? "inactive" : "active";
+
+    address.status = newStatus;
+    address.updatedBy = req.user?.id;
+    await address.save();
+
     res.json({
       success: true,
-      message: "Customer address deactivated successfully",
+      message: `Customer address ${newStatus === "active" ? "activated" : "deactivated"} successfully`,
       data: address,
     });
   } catch (error) {
@@ -162,16 +177,12 @@ exports.deleteCustomerAddress = async (req, res) => {
   }
 };
 
-exports.activateCustomerAddress = async (req, res) => {
+/* ============================================================
+   6. PERMANENT DELETE (DELETE IN ONE)
+============================================================ */
+exports.deleteCustomerAddress = async (req, res) => {
   try {
-    const address = await CustomerAddress.findByIdAndUpdate(
-      req.params.id,
-      {
-        status: "active",
-        updatedBy: req.user?.id,
-      },
-      { new: true }
-    );
+    const address = await CustomerAddress.findByIdAndDelete(req.params.id);
 
     if (!address) {
       return res.status(404).json({
@@ -182,8 +193,8 @@ exports.activateCustomerAddress = async (req, res) => {
 
     res.json({
       success: true,
-      message: "Customer address activated successfully",
-      data: address,
+      message: "Customer address deleted permanently",
+      data: { id: address._id },
     });
   } catch (error) {
     res.status(500).json({

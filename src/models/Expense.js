@@ -6,18 +6,16 @@ const recurringSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
-
     frequency: {
       type: String,
       enum: ["Daily", "Weekly", "Monthly", "Quarterly", "Yearly"],
       default: "Monthly",
     },
-
     nextDueDate: Date,
   },
   {
     _id: false,
-  },
+  }
 );
 
 const schema = new mongoose.Schema(
@@ -27,6 +25,7 @@ const schema = new mongoose.Schema(
       required: true,
       unique: true,
       uppercase: true,
+      trim: true,
     },
 
     expenseCategory: {
@@ -70,6 +69,7 @@ const schema = new mongoose.Schema(
     taxAmount: {
       type: Number,
       default: 0,
+      min: 0,
     },
 
     totalAmount: {
@@ -83,11 +83,17 @@ const schema = new mongoose.Schema(
       required: true,
     },
 
-    receiptNumber: String,
+    receiptNumber: {
+      type: String,
+      trim: true,
+    },
 
     billImage: String,
 
-    description: String,
+    description: {
+      type: String,
+      trim: true,
+    },
 
     approvalStatus: {
       type: String,
@@ -122,21 +128,25 @@ const schema = new mongoose.Schema(
   {
     timestamps: true,
     versionKey: false,
-  },
+  }
 );
 
 schema.pre("save", function () {
   this.totalAmount = Number(this.amount || 0) + Number(this.taxAmount || 0);
 });
 
-// Fix findOneAndUpdate calculation
 schema.pre("findOneAndUpdate", function () {
   const update = this.getUpdate();
-
-  if (update.amount || update.taxAmount) {
-    update.totalAmount =
-      Number(update.amount || 0) + Number(update.taxAmount || 0);
+  if (update && (update.amount !== undefined || update.taxAmount !== undefined)) {
+    const base = update.amount !== undefined ? Number(update.amount) : 0;
+    const tax = update.taxAmount !== undefined ? Number(update.taxAmount) : 0;
+    update.totalAmount = base + tax;
   }
 });
+
+schema.index({ expenseNumber: 1 });
+schema.index({ store: 1 });
+schema.index({ approvalStatus: 1 });
+schema.index({ status: 1 });
 
 module.exports = mongoose.model("Expense", schema);

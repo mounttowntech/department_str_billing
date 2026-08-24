@@ -1,29 +1,15 @@
 const router = require("express").Router();
-
 const c = require("../controllers/ExpenseController");
+const { verifyToken } = require("../middleware/authMiddleware");
 
-// Create Expense
-router.post("/create", c.createExpense);
-
-// Get All Expense
-router.get("/all", c.getAllExpense);
-
-// Get Expense By Id
-router.get("/:id", c.getExpenseById);
-
-// Update Expense
-router.put("/update/:id", c.updateExpense);
-
-// Delete Expense (Soft Delete)
-router.delete("/delete/:id", c.deleteExpense);
-
-// Approve Expense
-router.put("/approve/:id", c.approveExpense);
-
-// Reject Expense
-router.put("/reject/:id", c.rejectExpense);
-
-// Expense Summary Report
-router.get("/summary/report", c.getExpenseSummary);
+// Routes with authentication
+router.post("/create", verifyToken, c.createExpense);
+router.get("/all", verifyToken, c.getAllExpense);
+router.get("/summary/report", verifyToken, c.getExpenseSummary);
+router.get("/:id", verifyToken, c.getExpenseById);
+router.put("/update/:id", verifyToken, c.updateExpense);
+router.delete("/delete/:id", verifyToken, c.deleteExpense);
+router.put("/approve/:id", verifyToken, c.approveExpense);
+router.put("/reject/:id", verifyToken, c.rejectExpense);
 
 module.exports = router;
