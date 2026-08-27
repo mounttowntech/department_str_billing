@@ -2,28 +2,104 @@ const router = require("express").Router();
 
 const c = require("../controllers/NotificationController");
 
-// Create
-router.post("/create", c.createNotification);
+const {
+  verifyToken,
+} = require("../middleware/authMiddleware");
 
-// Get All
-router.get("/all", c.getAllNotification);
+/*
+|--------------------------------------------------------------------------
+| CREATE
+|--------------------------------------------------------------------------
+*/
 
-// Get By Id
-router.get("/:id", c.getNotificationById);
+router.post(
+  "/create",
+  verifyToken,
+  c.createNotification
+);
 
-// Update
-router.put("/update/:id", c.updateNotification);
+/*
+|--------------------------------------------------------------------------
+| MY NOTIFICATIONS
+|--------------------------------------------------------------------------
+*/
 
-// Delete (Soft Delete)
-router.delete("/delete/:id", c.deleteNotification);
+router.get(
+  "/all",
+  verifyToken,
+  c.getMyNotifications
+);
 
-// Mark Single Notification As Read
-router.put("/read/:id", c.markAsRead);
+/*
+|--------------------------------------------------------------------------
+| GET BY ID
+|--------------------------------------------------------------------------
+*/
 
-// Mark All Notifications As Read
-router.put("/read-all/:receiver", c.markAllAsRead);
+router.get(
+  "/:id",
+  verifyToken,
+  c.getNotificationById
+);
 
-// Get Unread Count
-router.get("/unread-count/:receiver", c.getUnreadCount);
+/*
+|--------------------------------------------------------------------------
+| UPDATE
+|--------------------------------------------------------------------------
+*/
+
+router.put(
+  "/update/:id",
+  verifyToken,
+  c.updateNotification
+);
+
+/*
+|--------------------------------------------------------------------------
+| DELETE
+|--------------------------------------------------------------------------
+*/
+
+router.delete(
+  "/delete/:id",
+  verifyToken,
+  c.deleteNotification
+);
+
+/*
+|--------------------------------------------------------------------------
+| MARK SINGLE AS READ
+|--------------------------------------------------------------------------
+*/
+
+router.put(
+  "/read/:id",
+  verifyToken,
+  c.markAsRead
+);
+
+/*
+|--------------------------------------------------------------------------
+| MARK ALL AS READ
+|--------------------------------------------------------------------------
+*/
+
+router.put(
+  "/read-all",
+  verifyToken,
+  c.markAllAsRead
+);
+
+/*
+|--------------------------------------------------------------------------
+| UNREAD COUNT
+|--------------------------------------------------------------------------
+*/
+
+router.get(
+  "/unread-count",
+  verifyToken,
+  c.getMyUnreadCount
+);
 
 module.exports = router;

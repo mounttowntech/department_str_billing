@@ -49,10 +49,23 @@ exports.createCoupon = asyncHandler(async (req, res) => {
 });
 
 /* ============================================================
-   2. GET ALL COUPONS
+   2. GET ALL COUPONS (WITH AUTO-EXPIRY CHECK)
 ============================================================ */
 exports.getAllCoupon = asyncHandler(async (req, res) => {
   const { page = 1, limit = 100, search, status, store } = req.query;
+
+  const now = new Date();
+
+  // Automatically deactivate expired active coupons
+  await Coupon.updateMany(
+    {
+      status: true,
+      endDate: { $ne: null, $lt: now },
+    },
+    {
+      $set: { status: false },
+    }
+  );
 
   const filter = {};
 

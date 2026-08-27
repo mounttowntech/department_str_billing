@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const SalesInvoice = require("../models/SalesInvoice");
 const Customer = require("../models/Customer");
 const Coupon = require("../models/Coupon");
+const Offer = require("../models/Offer");
 const Product = require("../models/Product");
 const ProductVariant = require("../models/ProductVariant");
 const Batch = require("../models/Batch");
@@ -18,7 +19,7 @@ exports.createSalesInvoice = async (req, res) => {
       store,
       warehouse,
       couponCode,
-      couponAmount, // <-- Explicitly extracted from req.body
+      couponAmount,
       invoiceDate,
       billingType,
       customerType,
@@ -91,18 +92,52 @@ exports.createSalesInvoice = async (req, res) => {
     }
 
     // ==========================
-    // Coupon Verification & Lookup
+    // Coupon / Offer Verification & Lookup
     // ==========================
     let couponId = null;
+    let appliedCoupon = null;
+
     if (couponCode) {
-      const couponExists = await Coupon.findOne({
-        couponCode: couponCode.trim().toUpperCase(),
+      const normalizedCode = couponCode.trim().toUpperCase();
+
+      // 1. Try finding a physical Coupon first
+      appliedCoupon = await Coupon.findOne({
+        couponCode: normalizedCode,
       }).session(session);
 
-      if (!couponExists) {
-        throw new Error("Invalid coupon code");
+      if (appliedCoupon) {
+        if (!appliedCoupon.status) {
+          throw new Error("Coupon is inactive");
+        }
+
+        const now = new Date();
+        if (appliedCoupon.endDate && now > new Date(appliedCoupon.endDate)) {
+          throw new Error("Coupon has expired");
+        }
+
+        const usageLimit = Number(appliedCoupon.usageLimit || 0);
+        const usedCount = Number(appliedCoupon.usedCount || 0);
+
+        if (usageLimit > 0 && usedCount >= usageLimit) {
+          throw new Error("Coupon usage limit has been reached");
+        }
+
+        couponId = appliedCoupon._id;
+      } else {
+        // 2. If not a coupon, check if it's an automated Offer name/campaign
+        const matchedOffer = await Offer.findOne({
+          $or: [
+            { offerName: { $regex: new RegExp(`^${couponCode.trim()}$`, "i") } },
+            { offerCode: normalizedCode }
+          ],
+          status: true
+        }).session(session);
+
+        if (!matchedOffer) {
+          throw new Error("Invalid coupon code or offer name");
+        }
+        // Offers bypass strict coupon ID tracking, allowing the calculated discount to pass through safely
       }
-      couponId = couponExists._id;
     }
 
     // ==========================
@@ -115,7 +150,7 @@ exports.createSalesInvoice = async (req, res) => {
       warehouse,
       coupon: couponId,
       couponCode: couponCode ? couponCode.toUpperCase() : undefined,
-      couponAmount: Number(couponAmount || 0), // <-- Explicitly saved from frontend calculation
+      couponAmount: Number(couponAmount || 0),
       invoiceDate,
       billingType,
       customerType,
@@ -127,6 +162,33 @@ exports.createSalesInvoice = async (req, res) => {
     });
 
     await salesInvoice.save({ session });
+
+    // ==========================
+    // Increase Coupon Used Count
+    // ==========================
+    if (appliedCoupon) {
+      const updatedCoupon = await Coupon.findOneAndUpdate(
+        {
+          _id: appliedCoupon._id,
+          $expr: {
+            $lt: ["$usedCount", "$usageLimit"],
+          },
+        },
+        {
+          $inc: {
+            usedCount: 1,
+          },
+        },
+        {
+          new: true,
+          session,
+        }
+      );
+
+      if (!updatedCoupon) {
+        throw new Error("Coupon usage limit has been reached");
+      }
+    }
 
     // ==========================
     // Deduct Stock
@@ -324,6 +386,7 @@ exports.updateSalesInvoice = async (req, res) => {
       return res.status(404).json({ success: false, message: "Sales Invoice not found" });
     }
 
+    const oldCouponId = invoice.coupon;
     const oldCustomer = invoice.customer;
     const oldPendingDue = Math.max(0, Number(invoice.grandTotal || 0) - Number(invoice.paidAmount || 0));
 
@@ -352,19 +415,52 @@ exports.updateSalesInvoice = async (req, res) => {
       }
     }
 
-    // Coupon verification on update
-    let couponId = null;
+    // Coupon / Offer verification on update
+    let newCoupon = null;
     if (req.body.couponCode) {
-      const couponExists = await Coupon.findOne({
-        couponCode: req.body.couponCode.trim().toUpperCase(),
+      const normalizedCode = req.body.couponCode.trim().toUpperCase();
+
+      newCoupon = await Coupon.findOne({
+        couponCode: normalizedCode,
       }).session(session);
 
-      if (!couponExists) {
-        await session.abortTransaction();
-        session.endSession();
-        return res.status(400).json({ success: false, message: "Invalid coupon code" });
+      if (newCoupon) {
+        if (!newCoupon.status) {
+          await session.abortTransaction();
+          session.endSession();
+          return res.status(400).json({ success: false, message: "Coupon is inactive" });
+        }
+
+        const now = new Date();
+        if (newCoupon.endDate && now > new Date(newCoupon.endDate)) {
+          await session.abortTransaction();
+          session.endSession();
+          return res.status(400).json({ success: false, message: "Coupon has expired" });
+        }
+
+        const usageLimit = Number(newCoupon.usageLimit || 0);
+        const usedCount = Number(newCoupon.usedCount || 0);
+
+        if (usageLimit > 0 && usedCount >= usageLimit) {
+          await session.abortTransaction();
+          session.endSession();
+          return res.status(400).json({ success: false, message: "Coupon usage limit has been reached" });
+        }
+      } else {
+        const matchedOffer = await Offer.findOne({
+          $or: [
+            { offerName: { $regex: new RegExp(`^${req.body.couponCode.trim()}$`, "i") } },
+            { offerCode: normalizedCode }
+          ],
+          status: true
+        }).session(session);
+
+        if (!matchedOffer) {
+          await session.abortTransaction();
+          session.endSession();
+          return res.status(400).json({ success: false, message: "Invalid coupon code or offer name" });
+        }
       }
-      couponId = couponExists._id;
     }
 
     if (!req.body.items || req.body.items.length === 0) {
@@ -394,9 +490,9 @@ exports.updateSalesInvoice = async (req, res) => {
     invoice.store = req.body.store;
     invoice.warehouse = req.body.warehouse;
     invoice.invoiceDate = req.body.invoiceDate;
-    invoice.coupon = couponId;
+    invoice.coupon = newCoupon ? newCoupon._id : null;
     invoice.couponCode = req.body.couponCode ? req.body.couponCode.toUpperCase() : undefined;
-    invoice.couponAmount = Number(req.body.couponAmount || 0); // <-- Explicitly saved during update
+    invoice.couponAmount = Number(req.body.couponAmount || 0);
     invoice.billingType = req.body.billingType;
     invoice.customerType = req.body.customerType;
     invoice.items = req.body.items;
@@ -408,6 +504,35 @@ exports.updateSalesInvoice = async (req, res) => {
     invoice.updatedBy = req.user?._id || req.user?.id;
 
     await invoice.save({ session });
+
+    // Handle coupon usage changes
+    const oldCouponString = oldCouponId ? oldCouponId.toString() : null;
+    const newCouponString = newCoupon ? newCoupon._id.toString() : null;
+
+    if (oldCouponString !== newCouponString) {
+      if (oldCouponId) {
+        await Coupon.findByIdAndUpdate(
+          oldCouponId,
+          { $inc: { usedCount: -1 } },
+          { session }
+        );
+      }
+
+      if (newCoupon) {
+        const updatedCoupon = await Coupon.findOneAndUpdate(
+          {
+            _id: newCoupon._id,
+            $expr: { $lt: ["$usedCount", "$usageLimit"] },
+          },
+          { $inc: { usedCount: 1 } },
+          { new: true, session }
+        );
+
+        if (!updatedCoupon) {
+          throw new Error("Coupon usage limit has been reached");
+        }
+      }
+    }
 
     // Deduct new stock
     for (const item of invoice.items) {
@@ -529,6 +654,20 @@ exports.deleteSalesInvoice = async (req, res) => {
           await batch.save({ session });
         }
       }
+    }
+
+    // Restore coupon usage count
+    if (invoice.coupon) {
+      await Coupon.findOneAndUpdate(
+        {
+          _id: invoice.coupon,
+          usedCount: { $gt: 0 },
+        },
+        {
+          $inc: { usedCount: -1 },
+        },
+        { session }
+      );
     }
 
     if (invoice.customer) {

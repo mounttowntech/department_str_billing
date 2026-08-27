@@ -2,7 +2,6 @@ const express = require("express");
 const cors = require("cors");
 const path = require("path");
 const errorMiddleware = require("./src/middleware/errorMiddleware");
-
 const app = express();
 
 app.use(cors());
@@ -52,11 +51,14 @@ app.use("/api/auth", require("./src/routes/authRoutes"));
 app.use("/api/users",require("./src/routes/userRoutes"));
 app.use("/api/warehouses", require("./src/routes/warehousesRoutes"));
 app.use("/uploads", express.static("uploads"));// Inline Profile Route (No separate file needed)
-const profileRouter = require("express").Router();
-profileRouter.get("/", (req, res) => res.json({ success: true, data: req.user || null }));
-profileRouter.put("/update", (req, res) => res.json({ success: true, message: "Profile updated", data: req.body }));
-profileRouter.put("/change-password", (req, res) => res.json({ success: true, message: "Password updated" }));
-app.use("/api/profile", profileRouter);
+const { verifyToken } = require("./src/middleware/authMiddleware");
+
+app.use(
+  "/api/profile",
+  verifyToken,
+  require("./src/routes/profileRoutes")
+);
+
 // app.use(errorMiddleware);
 
 module.exports = app;
