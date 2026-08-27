@@ -5,96 +5,85 @@ const asyncHandler = require("../utils/asyncHandler");
 const { success } = require("../utils/responseHandler");
 const { moveStock } = require("../services/inventoryService");
 
-/* ============================================================
-   CREATE STOCK TRANSFER
-============================================================ */
 exports.createStockTransfer = asyncHandler(async (req, res) => {
-  const userId =
-    req.user?._id ||
-    req.user?.id ||
-    req.user?.userId ||
-    req.body.createdBy;
-
-  if (!userId) {
-    return res.status(401).json({
-      success: false,
-      message: "Authenticated user not found",
-    });
-  }
-
-  const {
-    store,
-    fromWarehouse,
-    toWarehouse,
-    items,
-    remarks,
-  } = req.body;
-
-  if (!store) {
-    return res.status(400).json({ success: false, message: "Store is required." });
-  }
-  if (!fromWarehouse) {
-    return res.status(400).json({ success: false, message: "From Warehouse is required." });
-  }
-  if (!toWarehouse) {
-    return res.status(400).json({ success: false, message: "To Warehouse is required." });
-  }
-  if (String(fromWarehouse) === String(toWarehouse)) {
-    return res.status(400).json({
-      success: false,
-      message: "From Warehouse and To Warehouse cannot be the same.",
-    });
-  }
-  if (!items || !items.length) {
-    return res.status(400).json({ success: false, message: "Transfer items are required." });
-  }
-
-  const transferNo = (req.body.transferNo || `STF-${Date.now()}`).toUpperCase();
-
   const session = await mongoose.startSession();
 
   try {
     session.startTransaction();
 
+    const {
+      store,
+      fromWarehouse,
+      toWarehouse,
+      items,
+      remarks,
+      createdBy,
+    } = req.body;
+
+    if (!store)
+      throw new Error("Store is required.");
+
+    if (!fromWarehouse)
+      throw new Error("From Warehouse is required.");
+
+    if (!toWarehouse)
+      throw new Error("To Warehouse is required.");
+
+    if (fromWarehouse === toWarehouse)
+      throw new Error("From Warehouse and To Warehouse cannot be same.");
+
+    if (!items || !items.length)
+      throw new Error("Transfer items are required.");
+
+    const transferNo = req.body.transferNo || `STF-${Date.now()}`;
+
     let totalQuantity = 0;
     const transferItems = [];
 
+    // Validate every item
     for (const item of items) {
       let variant = null;
 
+      // Search by Variant ID
       if (item.variant && mongoose.Types.ObjectId.isValid(item.variant)) {
         variant = await ProductVariant.findOne({
           _id: item.variant,
           store,
+          status: "active",
         }).session(session);
       }
 
+      // Search by SKU if variant not found
       if (!variant && item.skuCode) {
         variant = await ProductVariant.findOne({
-          skuCode: String(item.skuCode).trim().toUpperCase(),
+          skuCode: item.skuCode.toUpperCase(),
           store,
+          status: "active",
         }).session(session);
       }
 
       if (!variant) {
         throw new Error(
-          `Variant not found. SKU: ${item.skuCode || "-"}, Variant ID: ${item.variant || "-"}`
+          `Variant not found. SKU: ${item.skuCode || "-"}, Variant ID: ${
+            item.variant || "-"
+          }`
         );
       }
 
-      const qty = Number(item.quantity);
-      if (!Number.isFinite(qty) || qty <= 0) {
-        throw new Error(`Quantity for ${variant.skuCode} must be greater than 0.`);
+      if (variant.currentStock < item.quantity) {
+        throw new Error(
+          `${variant.skuCode} has only ${variant.currentStock} stock available.`
+        );
       }
 
-      totalQuantity += qty;
+      totalQuantity += Number(item.quantity);
 
       transferItems.push({
         product: variant.product,
         variant: variant._id,
-        batch: item.batch || null,
+        batch: item.batch,
         skuCode: variant.skuCode,
-        quantity: qty,
+        quantity: item.quantity,
       });
     }
 
@@ -108,77 +97,70 @@ exports.createStockTransfer = asyncHandler(async (req, res) => {
           items: transferItems,
           totalItems: transferItems.length,
           totalQuantity,
-          remarks: remarks || "",
-          status: "completed",
-          createdBy: userId,
+          remarks,
+          createdBy: req.user?._id || createdBy,
         },
       ],
       { session }
     );
 
-    // Execute stock movements
+    // Move stock
     for (const item of transferItems) {
-      await moveStock({
-        variantId: item.variant,
-        batchId: item.batch || null,
-        quantity: item.quantity,
-        operation: "transfer_out",
-        referenceId: transfer._id,
-        referenceModel: "StockTransfer",
-        referenceNumber: transfer.transferNo,
-        store,
-        warehouse: fromWarehouse,
-        createdBy: userId,
-        remarks: "Warehouse Transfer Out",
-        allowNegative: true,
-        session,
-      });
+      await moveStock(
+        {
+          variantId: item.variant,
+          batchId: item.batch,
+          quantity: item.quantity,
+          operation: "transfer_out",
+          referenceId: transfer._id,
+          referenceModel: "StockTransfer",
+          referenceNumber: transfer.transferNo,
+          store,
+          warehouse: fromWarehouse,
+          createdBy: req.user?._id || createdBy,
+          remarks: "Warehouse Transfer Out",
+        },
+        { session }
+      );
 
-      await moveStock({
-        variantId: item.variant,
-        batchId: item.batch || null,
-        quantity: item.quantity,
-        operation: "transfer_in",
-        referenceId: transfer._id,
-        referenceModel: "StockTransfer",
-        referenceNumber: transfer.transferNo,
-        store,
-        warehouse: toWarehouse,
-        createdBy: userId,
-        remarks: "Warehouse Transfer In",
-        allowNegative: true,
-        session,
-      });
+      await moveStock(
+        {
+          variantId: item.variant,
+          batchId: item.batch,
+          quantity: item.quantity,
+          operation: "transfer_in",
+          referenceId: transfer._id,
+          referenceModel: "StockTransfer",
+          referenceNumber: transfer.transferNo,
+          store,
+          warehouse: toWarehouse,
+          createdBy: req.user?._id || createdBy,
+          remarks: "Warehouse Transfer In",
+          allowNegative: true,
+        },
+        { session }
+      );
     }
 
     await session.commitTransaction();
     session.endSession();
 
     const data = await StockTransfer.findById(transfer._id)
-      .populate("store", "storeName name")
-      .populate("fromWarehouse", "warehouseName name")
-      .populate("toWarehouse", "warehouseName name")
-      .populate("items.product", "productName name")
-      .populate("items.variant", "variantName skuCode name")
-      .populate("createdBy", "name email");
+      .populate("store", "storeName")
+      .populate("fromWarehouse", "warehouseName")
+      .populate("toWarehouse", "warehouseName")
+      .populate("items.product", "productName")
+      .populate("items.variant", "variantName skuCode")
+      .populate("createdBy", "firstName lastName");
 
     return success(res, "Stock transfer created successfully.", data, 201);
   } catch (err) {
-    if (session.inTransaction()) {
-      await session.abortTransaction();
-    }
+    await session.abortTransaction();
     session.endSession();
-    console.error("Create Stock Transfer Error:", err);
-    return res.status(400).json({
-      success: false,
-      message: err.message || "Failed to create stock transfer.",
-    });
+    throw err;
   }
 });
 
-/* ============================================================
-   GET ALL STOCK TRANSFERS
-============================================================ */
 exports.getStockTransfer = asyncHandler(async (req, res) => {
   const {
     page = 1,
@@ -192,20 +174,29 @@ exports.getStockTransfer = asyncHandler(async (req, res) => {
     toDate,
   } = req.query;
 
-  const filter = { isDeleted: { $ne: true } };
+  const filter = {};
 
   if (status) filter.status = status;
   if (store) filter.store = store;
   if (fromWarehouse) filter.fromWarehouse = fromWarehouse;
   if (toWarehouse) filter.toWarehouse = toWarehouse;
 
+  // Search by Transfer No
   if (search) {
-    filter.transferNo = { $regex: search, $options: "i" };
+    filter.transferNo = {
+      $regex: search,
+      $options: "i",
+    };
   }
 
+  // Date Filter
   if (fromDate || toDate) {
     filter.createdAt = {};
-    if (fromDate) filter.createdAt.$gte = new Date(fromDate);
+
+    if (fromDate) {
+      filter.createdAt.$gte = new Date(fromDate);
+    }
+
     if (toDate) {
       const endDate = new Date(toDate);
       endDate.setHours(23, 59, 59, 999);
@@ -214,17 +205,19 @@ exports.getStockTransfer = asyncHandler(async (req, res) => {
   }
 
   const skip = (Number(page) - 1) * Number(limit);
+
   const total = await StockTransfer.countDocuments(filter);
 
   const transfers = await StockTransfer.find(filter)
-    .populate("store", "storeName name")
-    .populate("fromWarehouse", "warehouseName name")
-    .populate("toWarehouse", "warehouseName name")
-    .populate("items.product", "productName name")
-    .populate("items.variant", "variantName skuCode name barcode")
+    .populate("store", "storeName")
+    .populate("fromWarehouse", "warehouseName")
+    .populate("toWarehouse", "warehouseName")
+    .populate("items.product", "productName")
+    .populate("items.variant", "variantName skuCode barcode")
+    .populate("items.batch", "batchNo")
     .populate("createdBy", "name email")
-    .populate("updatedBy", "name email")
-    .populate("cancelledBy", "name email")
+    .populate("updatedBy", "name")
+    .populate("cancelledBy", "name")
     .sort({ createdAt: -1 })
     .skip(skip)
     .limit(Number(limit));
@@ -232,28 +225,23 @@ exports.getStockTransfer = asyncHandler(async (req, res) => {
   return success(res, "Stock transfer list fetched successfully.", {
     total,
     page: Number(page),
-    totalPages: Math.ceil(total / Number(limit)) || 1,
+    totalPages: Math.ceil(total / Number(limit)),
     count: transfers.length,
     data: transfers,
   });
 });
 
-/* ============================================================
-   GET STOCK TRANSFER BY ID
-============================================================ */
 exports.getStockTransferById = asyncHandler(async (req, res) => {
-  const transfer = await StockTransfer.findOne({
-    _id: req.params.id,
-    isDeleted: { $ne: true },
-  })
-    .populate("store", "storeName name")
-    .populate("fromWarehouse", "warehouseName name")
-    .populate("toWarehouse", "warehouseName name")
-    .populate("items.product", "productName name")
-    .populate("items.variant", "variantName skuCode name barcode")
+  const transfer = await StockTransfer.findById(req.params.id)
+    .populate("store", "storeName")
+    .populate("fromWarehouse", "warehouseName")
+    .populate("toWarehouse", "warehouseName")
+    .populate("items.product", "productName")
+    .populate("items.variant", "variantName skuCode barcode")
+    .populate("items.batch", "batchNo")
     .populate("createdBy", "name email")
-    .populate("updatedBy", "name email")
-    .populate("cancelledBy", "name email");
+    .populate("updatedBy", "name")
+    .populate("cancelledBy", "name");
 
   if (!transfer) {
     return res.status(404).json({
@@ -265,211 +253,171 @@ exports.getStockTransferById = asyncHandler(async (req, res) => {
   return success(res, "Stock transfer details fetched successfully.", transfer);
 });
 
-/* ============================================================
-   UPDATE STOCK TRANSFER (WITH AUTOMATIC INVENTORY RE-SYNC)
-============================================================ */
 exports.updateStockTransferById = asyncHandler(async (req, res) => {
-  const userId = req.user?._id || req.user?.id || req.user?.userId;
-  const { store, fromWarehouse, toWarehouse, items, remarks } = req.body;
+  const transfer = await StockTransfer.findById(req.params.id);
 
-  if (!userId) {
-    return res.status(401).json({
+  if (!transfer) {
+    return res.status(404).json({
       success: false,
-      message: "Authenticated user not found",
+      message: "Stock transfer not found.",
     });
   }
 
-  const session = await mongoose.startSession();
-
-  try {
-    session.startTransaction();
-
-    const transfer = await StockTransfer.findById(req.params.id).session(session);
-
-    if (!transfer) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).json({
-        success: false,
-        message: "Stock transfer not found.",
-      });
-    }
-
-    if (transfer.status === "cancelled") {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({
-        success: false,
-        message: "Cancelled stock transfers cannot be edited.",
-      });
-    }
-
-    // 1. Reverse the previous transfer movements
-    for (const item of transfer.items) {
-      const variantId = item.variant?._id || item.variant;
-      await moveStock({
-        variantId,
-        batchId: item.batch || null,
-        quantity: item.quantity,
-        operation: "transfer_out",
-        referenceId: transfer._id,
-        referenceModel: "StockTransfer",
-        referenceNumber: `${transfer.transferNo}-EDIT-REVERSE`,
-        store: transfer.store,
-        warehouse: transfer.toWarehouse,
-        createdBy: userId,
-        remarks: "Reverse Destination on Edit",
-        allowNegative: true,
-        session,
-      });
-
-      await moveStock({
-        variantId,
-        batchId: item.batch || null,
-        quantity: item.quantity,
-        operation: "transfer_in",
-        referenceId: transfer._id,
-        referenceModel: "StockTransfer",
-        referenceNumber: `${transfer.transferNo}-EDIT-REVERSE`,
-        store: transfer.store,
-        warehouse: transfer.fromWarehouse,
-        createdBy: userId,
-        remarks: "Restore Origin on Edit",
-        allowNegative: true,
-        session,
-      });
-    }
-
-    // 2. Validate and prepare updated items
-    const newStore = store || transfer.store;
-    const newFromWh = fromWarehouse || transfer.fromWarehouse;
-    const newToWh = toWarehouse || transfer.toWarehouse;
-    const newItems = items && items.length ? items : transfer.items;
-
-    let totalQuantity = 0;
-    const transferItems = [];
-
-    for (const item of newItems) {
-      let variant = null;
-      const varId = item.variant?._id || item.variant;
-
-      if (varId && mongoose.Types.ObjectId.isValid(varId)) {
-        variant = await ProductVariant.findOne({
-          _id: varId,
-          store: newStore,
-        }).session(session);
-      }
-
-      if (!variant && item.skuCode) {
-        variant = await ProductVariant.findOne({
-          skuCode: String(item.skuCode).trim().toUpperCase(),
-          store: newStore,
-        }).session(session);
-      }
-
-      if (!variant) {
-        throw new Error(
-          `Variant not found: ${item.skuCode || varId}`
-        );
-      }
-
-      const qty = Number(item.quantity);
-      totalQuantity += qty;
-
-      transferItems.push({
-        product: variant.product,
-        variant: variant._id,
-        batch: item.batch || null,
-        skuCode: variant.skuCode,
-        quantity: qty,
-      });
-    }
-
-    // 3. Apply the new transfer movements
-    for (const item of transferItems) {
-      await moveStock({
-        variantId: item.variant,
-        batchId: item.batch || null,
-        quantity: item.quantity,
-        operation: "transfer_out",
-        referenceId: transfer._id,
-        referenceModel: "StockTransfer",
-        referenceNumber: `${transfer.transferNo}-UPDATED`,
-        store: newStore,
-        warehouse: newFromWh,
-        createdBy: userId,
-        remarks: "Updated Warehouse Transfer Out",
-        allowNegative: true,
-        session,
-      });
-
-      await moveStock({
-        variantId: item.variant,
-        batchId: item.batch || null,
-        quantity: item.quantity,
-        operation: "transfer_in",
-        referenceId: transfer._id,
-        referenceModel: "StockTransfer",
-        referenceNumber: `${transfer.transferNo}-UPDATED`,
-        store: newStore,
-        warehouse: newToWh,
-        createdBy: userId,
-        remarks: "Updated Warehouse Transfer In",
-        allowNegative: true,
-        session,
-      });
-    }
-
-    // 4. Update Document
-    transfer.store = newStore;
-    transfer.fromWarehouse = newFromWh;
-    transfer.toWarehouse = newToWh;
-    transfer.items = transferItems;
-    transfer.totalItems = transferItems.length;
-    transfer.totalQuantity = totalQuantity;
-    transfer.remarks = remarks !== undefined ? remarks : transfer.remarks;
-    transfer.updatedBy = userId;
-
-    await transfer.save({ session });
-
-    await session.commitTransaction();
-    session.endSession();
-
-    const data = await StockTransfer.findById(transfer._id)
-      .populate("store", "storeName name")
-      .populate("fromWarehouse", "warehouseName name")
-      .populate("toWarehouse", "warehouseName name")
-      .populate("items.product", "productName name")
-      .populate("items.variant", "variantName skuCode name")
-      .populate("createdBy", "name email")
-      .populate("updatedBy", "name email");
-
-    return success(res, "Stock transfer updated successfully.", data);
-  } catch (err) {
-    if (session.inTransaction()) {
-      await session.abortTransaction();
-    }
-    session.endSession();
-    console.error("Update Stock Transfer Error:", err);
+  // Prevent updating completed transfers
+  if (transfer.status === "completed") {
     return res.status(400).json({
       success: false,
-      message: err.message || "Failed to update stock transfer.",
+      message: "Completed stock transfers cannot be updated.",
     });
   }
+
+  Object.assign(transfer, req.body);
+
+  transfer.updatedBy = req.user?._id || req.body.updatedBy;
+
+  await transfer.save();
+
+  const data = await StockTransfer.findById(transfer._id)
+    .populate("store", "storeName")
+    .populate("fromWarehouse", "warehouseName")
+    .populate("toWarehouse", "warehouseName")
+    .populate("items.product", "productName")
+    .populate("items.variant", "variantName skuCode barcode")
+    .populate("items.batch", "batchNo")
+    .populate("createdBy", "name email")
+    .populate("updatedBy", "name email");
+
+  return success(res, "Stock transfer updated successfully.", data);
 });
 
-/* ============================================================
-   CANCEL STOCK TRANSFER (WITH INVENTORY REVERSAL)
-============================================================ */
-exports.cancelStockTransfer = asyncHandler(async (req, res) => {
-  const userId = req.user?._id || req.user?.id || req.user?.userId;
-  if (!userId) {
-    return res.status(401).json({
-      success: false,
-      message: "Authenticated user not found.",
-    });
-  }
 
+
+
+
+exports.deleteStockTransferById = asyncHandler(async (req, res) => {
+
+const { id } = req.params;
+
+// ==========================================================
+// VALIDATE ID
+// ==========================================================
+
+if (!mongoose.Types.ObjectId.isValid(id)) {
+  return res.status(400).json({
+    success: false,
+    message: "Invalid Stock Transfer ID",
+  });
+}
+
+// ==========================================================
+// AUTHENTICATED USER
+// ==========================================================
+
+const userId =
+  req.user?.id ||
+  req.user?._id ||
+  req.user?.userId;
+
+if (!userId) {
+  return res.status(401).json({
+    success: false,
+    message: "Authenticated user not found",
+  });
+}
+
+// ==========================================================
+// FIND STOCK TRANSFER
+// ==========================================================
+
+const transfer =
+  await StockTransfer.findOne({
+    _id: id,
+    isDeleted: {
+      $ne: true,
+    },
+  });
+
+if (!transfer) {
+  return res.status(404).json({
+    success: false,
+    message:
+      "Stock transfer not found or already deleted.",
+  });
+}
+
+// ==========================================================
+// SOFT DELETE
+// ==========================================================
+
+const deletedAt = new Date();
+
+const deletedTransfer =
+  await StockTransfer.findOneAndUpdate(
+    {
+      _id: id,
+      isDeleted: {
+        $ne: true,
+      },
+    },
+    {
+      $set: {
+        isDeleted: true,
+        deletedAt: deletedAt,
+        deletedBy: userId,
+      },
+    },
+    {
+      returnDocument: "after",
+      runValidators: false,
+    }
+  );
+
+// ==========================================================
+// CHECK DELETE
+// ==========================================================
+
+if (!deletedTransfer) {
+  return res.status(404).json({
+    success: false,
+    message:
+      "Stock transfer not found or already deleted.",
+  });
+}
+
+// ==========================================================
+// SUCCESS
+// ==========================================================
+
+return res.status(200).json({
+  success: true,
+  message:
+    "Stock transfer deleted successfully.",
+
+  data: {
+    transferId:
+      deletedTransfer._id,
+
+    transferNo:
+      deletedTransfer.transferNo,
+
+    status:
+      deletedTransfer.status,
+
+    isDeleted:
+      deletedTransfer.isDeleted,
+
+    deletedAt:
+      deletedTransfer.deletedAt,
+
+    deletedBy:
+      deletedTransfer.deletedBy,
+  },
+});
+
+});
+
+
+exports.cancelStockTransfer = asyncHandler(async (req, res) => {
   const session = await mongoose.startSession();
 
   try {
@@ -478,121 +426,81 @@ exports.cancelStockTransfer = asyncHandler(async (req, res) => {
     const transfer = await StockTransfer.findById(req.params.id).session(session);
 
     if (!transfer) {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(404).json({
-        success: false,
-        message: "Stock transfer not found.",
-      });
+      throw new Error("Stock transfer not found.");
     }
 
     if (transfer.status === "cancelled") {
-      await session.abortTransaction();
-      session.endSession();
-      return res.status(400).json({
-        success: false,
-        message: "Stock transfer is already cancelled.",
-      });
+      throw new Error("Stock transfer is already cancelled.");
     }
 
-    // Reverse destination and source warehouse inventory
+    // Reverse every transferred item
     for (const item of transfer.items) {
-      const variantId = item.variant?._id || item.variant;
+      const variant = await ProductVariant.findById(item.variant).session(session);
 
-      // Deduct from destination warehouse
-      await moveStock({
-        variantId,
-        batchId: item.batch || null,
-        quantity: Number(item.quantity),
-        operation: "transfer_out",
-        referenceId: transfer._id,
-        referenceModel: "StockTransfer",
-        referenceNumber: `${transfer.transferNo}-CANCEL`,
-        store: transfer.store,
-        warehouse: transfer.toWarehouse,
-        createdBy: userId,
-        remarks: "Reverse Transfer Out (Cancellation)",
-        allowNegative: true,
-        session,
-      });
+      if (!variant) {
+        throw new Error(`Variant not found: ${item.variant}`);
+      }
 
-      // Restore to source warehouse
-      await moveStock({
-        variantId,
-        batchId: item.batch || null,
-        quantity: Number(item.quantity),
-        operation: "transfer_in",
-        referenceId: transfer._id,
-        referenceModel: "StockTransfer",
-        referenceNumber: `${transfer.transferNo}-CANCEL`,
-        store: transfer.store,
-        warehouse: transfer.fromWarehouse,
-        createdBy: userId,
-        remarks: "Reverse Transfer In (Cancellation)",
-        allowNegative: true,
-        session,
-      });
+      // Reverse Transfer IN
+      await moveStock(
+        {
+          variantId: variant._id,
+          batchId: item.batch,
+          quantity: item.quantity,
+          operation: "transfer_out",
+          referenceId: transfer._id,
+          referenceModel: "StockTransfer",
+          referenceNumber: transfer.transferNo,
+          store: transfer.store,
+          warehouse: transfer.toWarehouse,
+          createdBy: req.user?._id || req.body.cancelledBy,
+          remarks: "Reverse Transfer Out",
+        },
+        { session }
+      );
+
+      // Reverse Transfer OUT
+      await moveStock(
+        {
+          variantId: variant._id,
+          batchId: item.batch,
+          quantity: item.quantity,
+          operation: "transfer_in",
+          referenceId: transfer._id,
+          referenceModel: "StockTransfer",
+          referenceNumber: transfer.transferNo,
+          store: transfer.store,
+          warehouse: transfer.fromWarehouse,
+          createdBy: req.user?._id || req.body.cancelledBy,
+          remarks: "Reverse Transfer In",
+          allowNegative: true,
+        },
+        { session }
+      );
     }
 
     transfer.status = "cancelled";
-    transfer.cancelledBy = userId;
+    transfer.cancelledBy = req.user?._id || req.body.cancelledBy;
     transfer.cancelledAt = new Date();
+
     await transfer.save({ session });
 
     await session.commitTransaction();
     session.endSession();
 
     const data = await StockTransfer.findById(transfer._id)
-      .populate("store", "storeName name")
-      .populate("fromWarehouse", "warehouseName name")
-      .populate("toWarehouse", "warehouseName name")
-      .populate("items.product", "productName name")
-      .populate("items.variant", "variantName skuCode name")
+      .populate("store", "storeName")
+      .populate("fromWarehouse", "warehouseName")
+      .populate("toWarehouse", "warehouseName")
+      .populate("items.product", "productName")
+      .populate("items.variant", "variantName skuCode")
       .populate("createdBy", "name email")
       .populate("cancelledBy", "name email");
 
     return success(res, "Stock transfer cancelled successfully.", data);
   } catch (err) {
-    if (session.inTransaction()) {
-      await session.abortTransaction();
-    }
+    await session.abortTransaction();
     session.endSession();
-    console.error("Cancel Stock Transfer Error:", err);
-    return res.status(400).json({
-      success: false,
-      message: err.message || "Failed to cancel stock transfer.",
-    });
+    throw err;
   }
-});
-
-/* ============================================================
-   DELETE STOCK TRANSFER
-============================================================ */
-exports.deleteStockTransferById = asyncHandler(async (req, res) => {
-  const { id } = req.params;
-
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return res.status(400).json({
-      success: false,
-      message: "Invalid Stock Transfer ID",
-    });
-  }
-
-  const deletedTransfer = await StockTransfer.findByIdAndDelete(id);
-
-  if (!deletedTransfer) {
-    return res.status(404).json({
-      success: false,
-      message: "Stock transfer not found or already deleted.",
-    });
-  }
-
-  return res.status(200).json({
-    success: true,
-    message: "Stock transfer deleted successfully.",
-    data: {
-      transferId: deletedTransfer._id,
-      transferNo: deletedTransfer.transferNo,
-    },
-  });
 });

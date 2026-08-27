@@ -51,12 +51,7 @@ app.use("/api/units", require("./src/routes/unitsRoutes"));
 app.use("/api/auth", require("./src/routes/authRoutes"));
 app.use("/api/users",require("./src/routes/userRoutes"));
 app.use("/api/warehouses", require("./src/routes/warehousesRoutes"));
-app.use("/uploads", express.static("uploads"));// Inline Profile Route (No separate file needed)
-const profileRouter = require("express").Router();
-profileRouter.get("/", (req, res) => res.json({ success: true, data: req.user || null }));
-profileRouter.put("/update", (req, res) => res.json({ success: true, message: "Profile updated", data: req.body }));
-profileRouter.put("/change-password", (req, res) => res.json({ success: true, message: "Password updated" }));
-app.use("/api/profile", profileRouter);
+app.use("/uploads", express.static("uploads"));
 // app.use(errorMiddleware);
 
 module.exports = app;

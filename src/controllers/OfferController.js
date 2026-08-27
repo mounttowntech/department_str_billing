@@ -1,24 +1,18 @@
 const response = require("../utils/responseHandler");
 const success = response.success;
 const asyncHandler = require("../utils/asyncHandler");
+
 const Offer = require("../models/Offer");
+
 const Product = require("../models/Product");
 const mongoose = require("mongoose");
-
-/* ============================================================
-   1. CREATE OFFER
-============================================================ */
 exports.createOffer = asyncHandler(async (req, res) => {
-  const createdBy =
-    req.user?._id ||
-    req.user?.id ||
-    req.user?.userId ||
-    req.body.createdBy;
+  const createdBy = req.user?._id || req.body.createdBy;
 
   if (!createdBy) {
-    return res.status(401).json({
+    return res.status(400).json({
       success: false,
-      message: "Authenticated user not found. Please log in again.",
+      message: "CreatedBy is required",
     });
   }
 
@@ -27,25 +21,27 @@ exports.createOffer = asyncHandler(async (req, res) => {
     createdBy,
   });
 
-  return success(res, "Offer created successfully.", offerData, 201);
+  success(res, "Offer created successfully.", offerData, 201);
 });
 
-/* ============================================================
-   2. CHECK APPLICABLE OFFER
-============================================================ */
 exports.getApplicableOffer = asyncHandler(async (req, res) => {
   try {
     const {
       store,
+
       productId,
+
       categoryId,
+
       subCategoryId,
+
       billAmount,
     } = req.body;
 
     if (!store) {
       return res.status(400).json({
         success: false,
+
         message: "Store is required.",
       });
     }
@@ -53,34 +49,64 @@ exports.getApplicableOffer = asyncHandler(async (req, res) => {
     if (!billAmount || Number(billAmount) <= 0) {
       return res.status(400).json({
         success: false,
+
         message: "Valid bill amount is required.",
       });
     }
 
     const today = new Date();
+
+    console.log("Today :", today);
+
+    console.log("Body :", req.body);
+
+    // Get all active offers for the store
+
     const offers = await Offer.find({
       store: new mongoose.Types.ObjectId(store),
+
       status: true,
     });
+
+    console.log("Offers Found :", offers.length);
 
     const applicableOffers = [];
 
     for (const offer of offers) {
-      if (offer.startDate && new Date(offer.startDate) > today) continue;
-      if (offer.endDate && new Date(offer.endDate) < today) continue;
+      console.log("--------------------------------");
+
+      console.log("Checking Offer :", offer.offerName);
+
+      // Date Validation
+
+      if (offer.startDate && offer.startDate > today) {
+        console.log("Offer not started");
+
+        continue;
+      }
+
+      if (offer.endDate && offer.endDate < today) {
+        console.log("Offer expired");
+
+        continue;
+      }
 
       let matched = false;
 
       // Product Match
+
       if (
         offer.product &&
         productId &&
         offer.product.toString() === productId
       ) {
         matched = true;
+
+        console.log("Matched by Product");
       }
 
       // Category Match
+
       if (
         !matched &&
         offer.category &&
@@ -88,9 +114,12 @@ exports.getApplicableOffer = asyncHandler(async (req, res) => {
         offer.category.toString() === categoryId
       ) {
         matched = true;
+
+        console.log("Matched by Category");
       }
 
       // SubCategory Match
+
       if (
         !matched &&
         offer.subCategory &&
@@ -98,16 +127,18 @@ exports.getApplicableOffer = asyncHandler(async (req, res) => {
         offer.subCategory.toString() === subCategoryId
       ) {
         matched = true;
+
+        console.log("Matched by SubCategory");
       }
 
-      // Store-wide fallback
-      if (!matched && !offer.product && !offer.category && !offer.subCategory) {
-        matched = true;
-      }
+      if (!matched) {
+        console.log("No Match");
 
-      if (!matched) continue;
+        continue;
+      }
 
       let discount = 0;
+
       if (offer.discountType === "percentage") {
         discount = (Number(billAmount) * offer.discountValue) / 100;
       } else {
@@ -116,10 +147,15 @@ exports.getApplicableOffer = asyncHandler(async (req, res) => {
 
       applicableOffers.push({
         offerId: offer._id,
+
         offerName: offer.offerName,
+
         discountType: offer.discountType,
+
         discountValue: offer.discountValue,
+
         discount: Number(discount.toFixed(2)),
+
         finalAmount: Number((billAmount - discount).toFixed(2)),
       });
     }
@@ -127,40 +163,45 @@ exports.getApplicableOffer = asyncHandler(async (req, res) => {
     if (applicableOffers.length === 0) {
       return res.json({
         success: true,
+
         offerAvailable: false,
+
         message: "No applicable offer found.",
       });
     }
+
+    // Highest Discount First
 
     applicableOffers.sort((a, b) => b.discount - a.discount);
 
     return res.json({
       success: true,
+
       offerAvailable: true,
+
       bestOffer: applicableOffers[0],
+
       allOffers: applicableOffers,
     });
   } catch (error) {
     console.error(error);
+
     return res.status(500).json({
       success: false,
+
       message: error.message,
     });
   }
 });
-
-/* ============================================================
-   3. GET ALL OFFERS
-============================================================ */
 exports.getAllOffer = asyncHandler(async (req, res) => {
-  const { page = 1, limit = 100, search, status, store } = req.query;
+  const { page = 1, limit = 10, search, status, store } = req.query;
 
   const filter = {};
 
   if (store) filter.store = store;
 
-  if (status !== undefined && status !== "") {
-    filter.status = status === "true" || status === true;
+  if (status !== undefined) {
+    filter.status = status === "true";
   }
 
   if (search) {
@@ -177,31 +218,27 @@ exports.getAllOffer = asyncHandler(async (req, res) => {
     .populate("category", "categoryName")
     .populate("subCategory", "subCategoryName")
     .populate("store", "storeName")
-    .populate("createdBy", "firstName lastName name email")
-    .populate("updatedBy", "firstName lastName name email")
+    .populate("createdBy", "firstName lastName")
+    .populate("updatedBy", "firstName lastName")
     .sort({ createdAt: -1 })
-    .skip((Number(page) - 1) * Number(limit))
+    .skip((page - 1) * limit)
     .limit(Number(limit));
 
-  return success(res, "Offer List", {
+  success(res, "Offer List", {
     total,
     page: Number(page),
-    totalPages: Math.ceil(total / Number(limit)) || 1,
+    totalPages: Math.ceil(total / limit),
     data: offers,
   });
 });
-
-/* ============================================================
-   4. GET OFFER BY ID
-============================================================ */
 exports.getOfferById = asyncHandler(async (req, res) => {
   const offer = await Offer.findById(req.params.id)
     .populate("product")
     .populate("category")
     .populate("subCategory")
     .populate("store")
-    .populate("createdBy", "firstName lastName name email")
-    .populate("updatedBy", "firstName lastName name email");
+    .populate("createdBy", "firstName lastName")
+    .populate("updatedBy", "firstName lastName");
 
   if (!offer) {
     return res.status(404).json({
@@ -210,18 +247,11 @@ exports.getOfferById = asyncHandler(async (req, res) => {
     });
   }
 
-  return success(res, "Offer Details", offer);
+  success(res, "Offer Details", offer);
 });
 
-/* ============================================================
-   5. UPDATE OFFER
-============================================================ */
 exports.updateOffer = asyncHandler(async (req, res) => {
-  const updatedBy =
-    req.user?._id ||
-    req.user?.id ||
-    req.user?.userId ||
-    req.body.updatedBy;
+  const updatedBy = req.user?._id || req.body.updatedBy;
 
   const offer = await Offer.findByIdAndUpdate(
     req.params.id,
@@ -232,7 +262,7 @@ exports.updateOffer = asyncHandler(async (req, res) => {
     {
       new: true,
       runValidators: true,
-    }
+    },
   );
 
   if (!offer) {
@@ -242,44 +272,19 @@ exports.updateOffer = asyncHandler(async (req, res) => {
     });
   }
 
-  return success(res, "Offer updated successfully.", offer);
+  success(res, "Offer updated successfully.", offer);
 });
-
-/* ============================================================
-   6. TOGGLE STATUS (ACTIVE <-> INACTIVE)
-============================================================ */
-exports.toggleOfferStatus = asyncHandler(async (req, res) => {
-  const offer = await Offer.findById(req.params.id);
-
-  if (!offer) {
-    return res.status(404).json({
-      success: false,
-      message: "Offer not found",
-    });
-  }
-
-  const updatedBy =
-    req.user?._id ||
-    req.user?.id ||
-    req.user?.userId ||
-    req.body.updatedBy;
-
-  offer.status = !offer.status;
-  offer.updatedBy = updatedBy;
-  await offer.save();
-
-  return success(
-    res,
-    `Offer ${offer.status ? "activated" : "deactivated"} successfully.`,
-    offer
-  );
-});
-
-/* ============================================================
-   7. DELETE PERMANENTLY
-============================================================ */
 exports.deleteOffer = asyncHandler(async (req, res) => {
-  const offer = await Offer.findByIdAndDelete(req.params.id);
+  const offer = await Offer.findByIdAndUpdate(
+    req.params.id,
+    {
+      status: false,
+      updatedBy: req.user?._id || req.body.updatedBy,
+    },
+    {
+      new: true,
+    },
+  );
 
   if (!offer) {
     return res.status(404).json({
@@ -288,5 +293,5 @@ exports.deleteOffer = asyncHandler(async (req, res) => {
     });
   }
 
-  return success(res, "Offer deleted permanently.");
+  success(res, "Offer deactivated successfully.");
 });

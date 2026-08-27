@@ -1,79 +1,32 @@
-const mongoose = require("mongoose");
 const response = require("../utils/responseHandler");
 const success = response.success;
 const asyncHandler = require("../utils/asyncHandler");
+
 const Expense = require("../models/Expense");
 
-/* ======================================================
-   1. CREATE EXPENSE
-====================================================== */
+// ======================================================
+// Create Expense
+// ======================================================
+
 exports.createExpense = asyncHandler(async (req, res) => {
-  const createdBy =
-    req.user?._id ||
-    req.user?.id ||
-    req.user?.userId ||
-    req.body.createdBy;
-
-  if (!createdBy) {
-    return res.status(401).json({
-      success: false,
-      message: "Authenticated user not found. Please log in again.",
-    });
-  }
-
-  const { expenseNumber, store, amount, taxAmount } = req.body;
-
-  if (!expenseNumber) {
-    return res.status(400).json({
-      success: false,
-      message: "Expense number is required.",
-    });
-  }
-
-  if (!store) {
-    return res.status(400).json({
-      success: false,
-      message: "Store selection is required.",
-    });
-  }
-
-  if (amount === undefined || Number(amount) < 0) {
-    return res.status(400).json({
-      success: false,
-      message: "Valid expense amount is required.",
-    });
-  }
-
-  const existing = await Expense.findOne({
-    expenseNumber: expenseNumber.trim().toUpperCase(),
-  });
-
-  if (existing) {
-    return res.status(400).json({
-      success: false,
-      message: "Expense number already exists.",
-    });
-  }
-
-  const totalAmount = Number(amount || 0) + Number(taxAmount || 0);
+  const createdBy = req.user?._id || req.body.createdBy;
 
   const expense = await Expense.create({
     ...req.body,
-    expenseNumber: expenseNumber.trim().toUpperCase(),
-    totalAmount,
     createdBy,
   });
 
-  return success(res, "Expense created successfully.", expense, 201);
+  success(res, "Expense created successfully", expense, 201);
 });
 
-/* ======================================================
-   2. GET ALL EXPENSES
-====================================================== */
+// ======================================================
+// Get All Expense
+// ======================================================
+
 exports.getAllExpense = asyncHandler(async (req, res) => {
   const {
     page = 1,
-    limit = 100,
+    limit = 10,
     search,
     store,
     supplier,
@@ -86,37 +39,55 @@ exports.getAllExpense = asyncHandler(async (req, res) => {
 
   const filter = {};
 
-  if (status !== undefined && status !== "") {
-    filter.status = status === "true" || status === true;
+  // Active / Deleted
+
+  if (status) {
+    filter.status = status;
   }
+
+  // Store Filter
 
   if (store) {
     filter.store = store;
   }
 
+  // Supplier Filter
+
   if (supplier) {
     filter.supplier = supplier;
   }
+
+  // Approval Status
 
   if (approvalStatus) {
     filter.approvalStatus = approvalStatus;
   }
 
+  // Payment Method
+
   if (paymentMethod) {
     filter.paymentMethod = paymentMethod;
   }
 
+  // Date Filter
+
   if (fromDate || toDate) {
     filter.expenseDate = {};
+
     if (fromDate) {
       filter.expenseDate.$gte = new Date(fromDate);
     }
+
     if (toDate) {
       const endDate = new Date(toDate);
+
       endDate.setHours(23, 59, 59, 999);
+
       filter.expenseDate.$lte = endDate;
     }
   }
+
+  // Search
 
   if (search) {
     filter.$or = [
@@ -126,12 +97,14 @@ exports.getAllExpense = asyncHandler(async (req, res) => {
           $options: "i",
         },
       },
+
       {
         expenseCategory: {
           $regex: search,
           $options: "i",
         },
       },
+
       {
         receiptNumber: {
           $regex: search,
@@ -144,174 +117,185 @@ exports.getAllExpense = asyncHandler(async (req, res) => {
   const total = await Expense.countDocuments(filter);
 
   const expenses = await Expense.find(filter)
+
     .populate("store", "storeName storeCode")
+
     .populate("supplier", "supplierName supplierCode")
+
     .populate("payment", "paymentNumber paymentStatus")
+
     .populate("taxSetting", "taxName percentage")
-    .populate("createdBy", "firstName lastName name email")
-    .populate("updatedBy", "firstName lastName name email")
-    .populate("approvedBy", "firstName lastName name email")
-    .sort({ createdAt: -1 })
+
+    .populate("createdBy", "firstName lastName")
+
+    .populate("updatedBy", "firstName lastName")
+
+    .populate("approvedBy", "firstName lastName")
+
+    .sort({
+      createdAt: -1,
+    })
+
     .skip((Number(page) - 1) * Number(limit))
+
     .limit(Number(limit));
 
-  return success(res, "Expense list", {
+  success(res, "Expense list", {
     total,
     page: Number(page),
-    totalPages: Math.ceil(total / Number(limit)) || 1,
+    totalPages: Math.ceil(total / limit),
     data: expenses,
   });
 });
 
-/* ======================================================
-   3. GET EXPENSE BY ID
-====================================================== */
+// ======================================================
+// Get Expense By ID
+// ======================================================
+
 exports.getExpenseById = asyncHandler(async (req, res) => {
   const expense = await Expense.findById(req.params.id)
+
     .populate("store")
+
     .populate("supplier")
+
     .populate("payment")
+
     .populate("taxSetting")
-    .populate("createdBy", "firstName lastName name email")
-    .populate("updatedBy", "firstName lastName name email")
-    .populate("approvedBy", "firstName lastName name email");
+
+    .populate("createdBy", "firstName lastName")
+
+    .populate("approvedBy", "firstName lastName");
 
   if (!expense) {
     return res.status(404).json({
       success: false,
-      message: "Expense not found.",
+      message: "Expense not found",
     });
   }
 
-  return success(res, "Expense details", expense);
+  success(res, "Expense details", expense);
 });
 
-/* ======================================================
-   4. UPDATE EXPENSE
-====================================================== */
+// ======================================================
+// Update Expense
+// ======================================================
+
 exports.updateExpense = asyncHandler(async (req, res) => {
-  const updatedBy =
-    req.user?._id ||
-    req.user?.id ||
-    req.user?.userId ||
-    req.body.updatedBy;
-
-  if (req.body.expenseNumber) {
-    req.body.expenseNumber = req.body.expenseNumber.trim().toUpperCase();
-  }
-
-  if (req.body.amount !== undefined || req.body.taxAmount !== undefined) {
-    const existing = await Expense.findById(req.params.id);
-    if (!existing) {
-      return res.status(404).json({
-        success: false,
-        message: "Expense not found.",
-      });
-    }
-
-    const base =
-      req.body.amount !== undefined
-        ? Number(req.body.amount)
-        : existing.amount;
-    const tax =
-      req.body.taxAmount !== undefined
-        ? Number(req.body.taxAmount)
-        : existing.taxAmount;
-
-    req.body.totalAmount = base + tax;
-  }
+  const updatedBy = req.user?._id || req.body.updatedBy;
 
   const expense = await Expense.findByIdAndUpdate(
     req.params.id,
+
     {
       ...req.body,
       updatedBy,
     },
+
     {
       new: true,
       runValidators: true,
-    }
+    },
   );
 
   if (!expense) {
     return res.status(404).json({
       success: false,
-      message: "Expense not found.",
+      message: "Expense not found",
     });
   }
 
-  return success(res, "Expense updated successfully", expense);
+  success(res, "Expense updated successfully", expense);
 });
 
-/* ======================================================
-   5. PERMANENT DELETE EXPENSE
-====================================================== */
+// ======================================================
+// Delete Expense (Soft Delete)
+// ======================================================
+
 exports.deleteExpense = asyncHandler(async (req, res) => {
-  const expense = await Expense.findByIdAndDelete(req.params.id);
+  const updatedBy = req.user?._id || req.body.updatedBy;
+
+  const expense = await Expense.findByIdAndUpdate(
+    req.params.id,
+
+    {
+      status: "cancelled",
+      updatedBy,
+    },
+
+    {
+      new: true,
+    },
+  );
 
   if (!expense) {
     return res.status(404).json({
       success: false,
-      message: "Expense not found.",
+      message: "Expense not found",
     });
   }
 
-  return success(res, "Expense deleted successfully.");
+  success(res, "Expense deleted successfully");
 });
 
-/* ======================================================
-   6. APPROVE EXPENSE
-====================================================== */
+// ======================================================
+// Approve Expense
+// ======================================================
+
 exports.approveExpense = asyncHandler(async (req, res) => {
   const expense = await Expense.findById(req.params.id);
 
   if (!expense) {
     return res.status(404).json({
       success: false,
-      message: "Expense not found.",
+      message: "Expense not found",
     });
   }
 
   expense.approvalStatus = "Approved";
-  expense.approvedBy =
-    req.user?._id || req.user?.id || req.user?.userId;
+
+  expense.approvedBy = req.user?._id;
+
   expense.approvedAt = new Date();
 
   await expense.save();
 
-  return success(res, "Expense approved successfully", expense);
+  success(res, "Expense approved successfully", expense);
 });
 
-/* ======================================================
-   7. REJECT EXPENSE
-====================================================== */
+// ======================================================
+// Reject Expense
+// ======================================================
+
 exports.rejectExpense = asyncHandler(async (req, res) => {
   const expense = await Expense.findById(req.params.id);
 
   if (!expense) {
     return res.status(404).json({
       success: false,
-      message: "Expense not found.",
+      message: "Expense not found",
     });
   }
 
   expense.approvalStatus = "Rejected";
-  expense.approvedBy =
-    req.user?._id || req.user?.id || req.user?.userId;
+
+  expense.approvedBy = req.user?._id;
+
   expense.approvedAt = new Date();
 
   await expense.save();
 
-  return success(res, "Expense rejected successfully", expense);
+  success(res, "Expense rejected successfully", expense);
 });
 
-/* ======================================================
-   8. EXPENSE SUMMARY REPORT
-====================================================== */
+// ======================================================
+// Expense Summary Report
+// ======================================================
+
 exports.getExpenseSummary = asyncHandler(async (req, res) => {
   const { store, fromDate, toDate } = req.query;
 
-  const match = { status: true };
+  const match = {};
 
   if (store) {
     match.store = new mongoose.Types.ObjectId(store);
@@ -319,13 +303,13 @@ exports.getExpenseSummary = asyncHandler(async (req, res) => {
 
   if (fromDate || toDate) {
     match.expenseDate = {};
+
     if (fromDate) {
       match.expenseDate.$gte = new Date(fromDate);
     }
+
     if (toDate) {
-      const endDate = new Date(toDate);
-      endDate.setHours(23, 59, 59, 999);
-      match.expenseDate.$lte = endDate;
+      match.expenseDate.$lte = new Date(toDate);
     }
   }
 
@@ -333,12 +317,15 @@ exports.getExpenseSummary = asyncHandler(async (req, res) => {
     {
       $match: match,
     },
+
     {
       $group: {
         _id: null,
+
         totalExpense: {
           $sum: "$totalAmount",
         },
+
         count: {
           $sum: 1,
         },
@@ -346,12 +333,12 @@ exports.getExpenseSummary = asyncHandler(async (req, res) => {
     },
   ]);
 
-  return success(
+  success(
     res,
     "Expense summary",
     summary[0] || {
       totalExpense: 0,
       count: 0,
-    }
+    },
   );
 });

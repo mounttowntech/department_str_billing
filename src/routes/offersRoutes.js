@@ -1,24 +1,17 @@
 const router = require("express").Router();
 const controller = require("../controllers/OfferController");
-const { verifyToken } = require("../middleware/authMiddleware");
 
-// Create
-router.post("/create", verifyToken, controller.createOffer);
+router.post("/create", controller.createOffer);
+// Apply Offer
+router.post("/applicable", controller.getApplicableOffer);
+router.get("/all", controller.getAllOffer);
 
-// Apply offer check
-router.post("/applicable", verifyToken, controller.getApplicableOffer);
+router.get("/:id", controller.getOfferById);
 
-// Get all & by ID
-router.get("/all", verifyToken, controller.getAllOffer);
-router.get("/:id", verifyToken, controller.getOfferById);
+router.put("/update/:id", controller.updateOffer);
 
-// Update
-router.put("/update/:id", verifyToken, controller.updateOffer);
+router.delete("/delete/:id", controller.deleteOffer);
 
-// Active / Deactivate toggle
-router.patch("/toggle-status/:id", verifyToken, controller.toggleOfferStatus);
 
-// Permanent Delete
-router.delete("/delete/:id", verifyToken, controller.deleteOffer);
 
 module.exports = router;

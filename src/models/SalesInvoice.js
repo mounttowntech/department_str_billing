@@ -148,18 +148,6 @@ const salesInvoiceSchema = new mongoose.Schema(
       ref: "Coupon",
     },
 
-    couponCode: {
-      type: String,
-      uppercase: true,
-      trim: true,
-    },
-
-    couponAmount: {
-      type: Number,
-      default: 0,
-      min: 0,
-    },
-
     invoiceDate: {
       type: Date,
       default: Date.now,
@@ -173,8 +161,8 @@ const salesInvoiceSchema = new mongoose.Schema(
 
     customerType: {
       type: String,
-      enum: ["walk_in", "regular", "wholesale"],
-      default: "walk_in",
+      enum: ["Walk-In", "Registered"],
+      default: "Walk-In",
     },
 
     items: {
@@ -309,80 +297,75 @@ const salesInvoiceSchema = new mongoose.Schema(
 );
 
 /* ==========================================
-   Calculate Totals (Using Async Pre-Save Hook)
+   Calculate Totals
 ========================================== */
 
-salesInvoiceSchema.pre("save", async function () {
-  let calculatedSubTotal = 0;
-  let calculatedDiscount = 0;
-  let calculatedTaxable = 0;
-  let totalGst = 0;
-  let totalQty = 0;
+salesInvoiceSchema.pre("save", function () {
+  this.subTotal = 0;
+  this.discountAmount = 0;
+  this.taxableAmount = 0;
+  this.cgstAmount = 0;
+  this.sgstAmount = 0;
+  this.igstAmount = 0;
+  this.gstAmount = 0;
+  this.totalItems = this.items.length;
+  this.totalQuantity = 0;
 
-  if (this.items && this.items.length > 0) {
-    this.items.forEach((item) => {
-      const qty = Number(item.quantity || 0);
-      const price = Number(item.price || 0);
-      const itemDiscount = Math.min(Math.max(Number(item.discount || 0), 0), qty * price);
-      const gross = qty * price;
-      const taxable = Math.max(gross - itemDiscount, 0);
+  this.items.forEach((item) => {
+    const qty = Number(item.quantity || 0);
+    const price = Number(item.price || 0);
+    const discount = Number(item.discount || 0);
 
-      calculatedSubTotal += gross;
-      calculatedDiscount += itemDiscount;
-      calculatedTaxable += taxable;
-      totalQty += qty;
+    const gross = qty * price;
+    const taxable = gross - discount;
 
-      const gstPercentage = Number(item.gstPercentage || 0);
-      const itemGst = (taxable * gstPercentage) / 100;
+    const gst = (taxable * Number(item.gstPercentage || 0)) / 100;
 
-      // Update individual item amounts
-      item.taxableAmount = Number(taxable.toFixed(2));
-      item.cgstAmount = Number((itemGst / 2).toFixed(2));
-      item.sgstAmount = Number((itemGst / 2).toFixed(2));
-      item.gstAmount = Number(itemGst.toFixed(2));
-      item.totalAmount = Number((taxable + itemGst).toFixed(2));
+    item.taxableAmount = Number(taxable.toFixed(2));
+    item.gstAmount = Number(gst.toFixed(2));
 
-      totalGst += itemGst;
-    });
-  }
+    item.cgstAmount = Number((gst / 2).toFixed(2));
+    item.sgstAmount = Number((gst / 2).toFixed(2));
+    item.igstAmount = 0;
 
-  this.subTotal = Number(calculatedSubTotal.toFixed(2));
-  this.discountAmount = Number(calculatedDiscount.toFixed(2));
-  this.taxableAmount = Number(calculatedTaxable.toFixed(2));
-  this.totalQuantity = totalQty;
-  this.totalItems = this.items?.length || 0;
+    item.totalAmount = Number((taxable + gst).toFixed(2));
 
-  // Coupon calculations
-  const safeCoupon = Math.min(Math.max(Number(this.couponAmount || 0), 0), this.taxableAmount);
-  this.couponAmount = Number(safeCoupon.toFixed(2));
+    this.totalQuantity += qty;
+    this.subTotal += gross;
+    this.discountAmount += discount;
+    this.taxableAmount += taxable;
+    this.cgstAmount += item.cgstAmount;
+    this.sgstAmount += item.sgstAmount;
+    this.igstAmount += item.igstAmount;
+    this.gstAmount += gst;
+  });
 
-  const taxableAfterCoupon = Math.max(this.taxableAmount - safeCoupon, 0);
-  const couponRatio = this.taxableAmount > 0 ? taxableAfterCoupon / this.taxableAmount : 0;
-  
-  const finalGst = totalGst * couponRatio;
-  this.cgstAmount = Number((finalGst / 2).toFixed(2));
-  this.sgstAmount = Number((finalGst / 2).toFixed(2));
-  this.gstAmount = Number(finalGst.toFixed(2));
+  const total = this.taxableAmount + this.gstAmount;
 
-  const totalBeforeRound = taxableAfterCoupon + finalGst;
-  this.grandTotal = Math.round(totalBeforeRound);
-  this.roundOffAmount = Number((this.grandTotal - totalBeforeRound).toFixed(2));
+  this.roundOffAmount = Number(
+    (Math.round(total) - total).toFixed(2)
+  );
 
-  // Payment status & Due balance calculation
-  const paid = Number(this.paidAmount || 0);
-  if (this.grandTotal === 0 || paid >= this.grandTotal) {
+  this.grandTotal = Math.round(total);
+
+  this.dueAmount = Math.max(
+    this.grandTotal - Number(this.paidAmount || 0),
+    0
+  );
+
+  this.returnAmount = Math.max(
+    Number(this.paidAmount || 0) - this.grandTotal,
+    0
+  );
+
+  if (this.dueAmount === 0 && this.paidAmount >= this.grandTotal)
     this.paymentStatus = "Paid";
-    this.dueAmount = 0;
-    this.returnAmount = Number((paid - this.grandTotal).toFixed(2));
-  } else if (paid > 0) {
+  else if (this.paidAmount > 0)
     this.paymentStatus = "Partial";
-    this.dueAmount = Number((this.grandTotal - paid).toFixed(2));
-    this.returnAmount = 0;
-  } else {
+  else
     this.paymentStatus = "Pending";
-    this.dueAmount = this.grandTotal;
-    this.returnAmount = 0;
-  }
+
+
 });
 
 /* ==========================================
@@ -390,7 +373,7 @@ salesInvoiceSchema.pre("save", async function () {
 ========================================== */
 
 salesInvoiceSchema.virtual("itemCount").get(function () {
-  return this.items?.length || 0;
+    return this.items?.length || 0;
 });
 
 /* ==========================================

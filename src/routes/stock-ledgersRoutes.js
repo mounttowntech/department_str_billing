@@ -1,20 +1,36 @@
 const router = require("express").Router();
-const controller = require("../controllers/StockLedgerController");
-const { verifyToken } = require("../middleware/authMiddleware");
 
+const controller = require("../controllers/StockLedgerController");
+const {verifyToken} = require("../middleware/authMiddleware");
 // Create
-router.post("/create", verifyToken, controller.createStockLedger);
+router.post(
+  "/create",
+  controller.createStockLedger
+);
 
 // Get All
-router.get("/all", verifyToken, controller.getStockLedger);
+router.get(
+  "/all",
+  controller.getStockLedger
+);
 
-// Get By ID
-router.get("/:id", verifyToken, controller.getStockLedgerById);
+// Get By Id
+router.get(
+  "/:id",
+  controller.getStockLedgerById
+);
 
 // Update
-router.put("/update/:id", verifyToken, controller.updateStockLedgerById);
+router.put(
+  "/update/:id",
+  controller.updateStockLedgerById
+);
 
 // Delete
-router.delete("/delete/:id", verifyToken, controller.deleteStockLedgerById);
+router.delete(
+  "/delete/:id",
+  verifyToken,
+  controller.deleteStockLedgerById
+);
 
 module.exports = router;
