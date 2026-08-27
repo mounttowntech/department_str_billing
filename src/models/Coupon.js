@@ -1,6 +1,6 @@
 const mongoose = require("mongoose");
 
-const schema = new mongoose.Schema(
+const couponSchema = new mongoose.Schema(
   {
     couponCode: {
       type: String,
@@ -34,16 +34,27 @@ const schema = new mongoose.Schema(
       min: 0,
     },
 
-    startDate: Date,
+    startDate: {
+      type: Date,
+    },
 
-    endDate: Date,
+    endDate: {
+      type: Date,
+    },
 
+    /*
+      0 = Unlimited
+      > 0 = Limited usage
+    */
     usageLimit: {
       type: Number,
       default: 0,
       min: 0,
     },
 
+    /*
+      Number of times coupon has been successfully used
+    */
     usedCount: {
       type: Number,
       default: 0,
@@ -78,8 +89,30 @@ const schema = new mongoose.Schema(
   }
 );
 
-schema.index({ couponCode: 1 });
-schema.index({ store: 1 });
-schema.index({ status: 1 });
+/* ============================================================
+   INDEXES
+============================================================ */
 
-module.exports = mongoose.model("Coupon", schema);
+couponSchema.index({
+  couponCode: 1,
+});
+
+couponSchema.index({
+  store: 1,
+});
+
+couponSchema.index({
+  status: 1,
+});
+
+couponSchema.index({
+  endDate: 1,
+});
+
+couponSchema.index({
+  store: 1,
+  couponCode: 1,
+});
+
+module.exports =
+  mongoose.model("Coupon", couponSchema);
