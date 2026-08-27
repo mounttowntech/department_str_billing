@@ -73,6 +73,12 @@ const userSchema = new mongoose.Schema(
 
     lastLogin: Date,
 
+    // Track first login for one-time email notification
+    isFirstLogin: {
+      type: Boolean,
+      default: true,
+    },
+
     refreshToken: String,
 
     resetPasswordOTP: String,
