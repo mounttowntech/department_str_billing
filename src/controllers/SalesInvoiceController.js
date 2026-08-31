@@ -6,6 +6,7 @@ const Offer = require("../models/Offer");
 const Product = require("../models/Product");
 const ProductVariant = require("../models/ProductVariant");
 const Batch = require("../models/Batch");
+const triggerNotification = require("../utils/notificationHelper");
 
 exports.createSalesInvoice = async (req, res) => {
   const session = await mongoose.startSession();
@@ -236,6 +237,23 @@ exports.createSalesInvoice = async (req, res) => {
 
     await session.commitTransaction();
     session.endSession();
+
+    // Trigger Automatic Sales Invoice Notification
+    const userId = req.user?._id || req.user?.id;
+    if (userId) {
+      await triggerNotification({
+        store: salesInvoice.store,
+        sender: userId,
+        receiver: userId,
+        title: "New Sale Invoiced",
+        message: `Invoice #${salesInvoice.invoiceNo} successfully created for ₹${salesInvoice.grandTotal || 0}.`,
+        type: "invoice",
+        priority: "Medium",
+        referenceId: salesInvoice._id,
+        referenceModel: "SalesInvoice",
+        createdBy: userId,
+      });
+    }
 
     const result = await SalesInvoice.findById(salesInvoice._id)
       .populate("customer", "customerName customerCode mobile email")

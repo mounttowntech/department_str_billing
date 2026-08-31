@@ -18,10 +18,6 @@ const removeFile = (relativePath) => {
   }
 };
 
-// Normalizes req.body.existingImageUrls to an array. When a FormData
-// field is appended multiple times, multer/Express gives you an array
-// automatically; with exactly one value it gives you a plain string;
-// with none, it's undefined.
 const toArray = (val) => {
   if (val === undefined) return [];
   return Array.isArray(val) ? val : [val];
@@ -29,7 +25,6 @@ const toArray = (val) => {
 
 exports.createVariant = async (req, res) => {
   try {
-    // New files uploaded via uploadVariantImages.array("images", 5)
     const uploadedUrls = (req.files || []).map(
       (file) => `/uploads/variants/${file.filename}`
     );
@@ -46,7 +41,6 @@ exports.createVariant = async (req, res) => {
       data: variant,
     });
   } catch (error) {
-    // Clean up any uploaded files if the DB write failed
     (req.files || []).forEach((file) =>
       removeFile(`/uploads/variants/${file.filename}`)
     );
@@ -140,17 +134,11 @@ exports.updateVariant = async (req, res) => {
     }
 
     const { existingImages, ...rest } = req.body;
-
-    // URLs the user chose to keep (already-saved images not removed in the UI)
     const keptUrls = toArray(existingImages);
-
-    // Any newly picked files uploaded on this request
     const newUrls = (req.files || []).map(
       (file) => `/uploads/variants/${file.filename}`
     );
 
-    // Whatever was on the document before but is NOT in keptUrls was
-    // removed by the user — delete those files from disk.
     (existing.imageUrls || [])
       .filter((url) => !keptUrls.includes(url))
       .forEach((url) => removeFile(url));
@@ -208,7 +196,6 @@ exports.deleteVariant = async (req, res) => {
     });
   } catch (error) {
     console.error("Delete variant error:", error);
-
     return res.status(500).json({
       success: false,
       message: "Failed to delete product variant",

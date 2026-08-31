@@ -1,6 +1,7 @@
 const User = require("../models/User");
 const RolePermission = require("../models/RolePermission");
 const Store = require("../models/Store");
+const triggerNotification = require("../utils/notificationHelper");
 
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
@@ -128,6 +129,22 @@ exports.register = async (req, res) => {
     } catch (mailError) {
       console.error("❌ Welcome email failed.");
       console.error(mailError);
+    }
+
+    // Trigger Automatic Registration Notification
+    if (user.store) {
+      await triggerNotification({
+        store: user.store,
+        sender: req.user?._id || req.user?.id || user._id,
+        receiver: user._id,
+        title: "Account Created",
+        message: `Welcome ${user.firstName}, your account has been successfully created.`,
+        type: "system",
+        priority: "Low",
+        referenceId: user._id,
+        referenceModel: "User",
+        createdBy: req.user?._id || req.user?.id || user._id,
+      });
     }
 
     // Remove Password

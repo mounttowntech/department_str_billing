@@ -72,7 +72,6 @@ const productSchema = new mongoose.Schema(
       default: "",
     },
 
-  
     isBatchRequired: {
       type: Boolean,
       default: false,

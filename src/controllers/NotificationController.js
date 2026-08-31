@@ -53,13 +53,6 @@ exports.createNotification = asyncHandler(async (req, res) => {
     });
   }
 
-  if (!receiver) {
-    return res.status(400).json({
-      success: false,
-      message: "Receiver is required.",
-    });
-  }
-
   if (!title || !title.trim()) {
     return res.status(400).json({
       success: false,
@@ -92,7 +85,7 @@ exports.createNotification = asyncHandler(async (req, res) => {
     });
   }
 
-  if (!mongoose.Types.ObjectId.isValid(receiver)) {
+  if (receiver && !mongoose.Types.ObjectId.isValid(receiver)) {
     return res.status(400).json({
       success: false,
       message: "Invalid receiver ID.",
@@ -106,7 +99,7 @@ exports.createNotification = asyncHandler(async (req, res) => {
   const notification = await Notification.create({
     store,
     sender,
-    receiver,
+    receiver: receiver || undefined,
     title: title.trim(),
     message: message.trim(),
     type: type || "general",
@@ -141,6 +134,7 @@ exports.createNotification = asyncHandler(async (req, res) => {
 // ============================================================
 exports.getMyNotifications = asyncHandler(async (req, res) => {
   const userId = req.user?.id;
+  const userStore = req.user?.store;
 
   if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
     return res.status(401).json({
@@ -158,9 +152,12 @@ exports.getMyNotifications = asyncHandler(async (req, res) => {
   } = req.query;
 
   const filter = {
-    receiver: userId,
     status: true,
   };
+
+  if (userStore) {
+    filter.store = userStore;
+  }
 
   // ============================================================
   // FILTER BY TYPE
@@ -168,14 +165,6 @@ exports.getMyNotifications = asyncHandler(async (req, res) => {
 
   if (type) {
     filter.type = type;
-  }
-
-  // ============================================================
-  // FILTER BY READ STATUS
-  // ============================================================
-
-  if (isRead !== undefined) {
-    filter.isRead = isRead === "true";
   }
 
   // ============================================================
@@ -200,9 +189,42 @@ exports.getMyNotifications = asyncHandler(async (req, res) => {
   }
 
   // ============================================================
+  // GET NOTIFICATIONS
+  // ============================================================
+
+  let notifications = await Notification.find(filter)
+    .populate("store", "storeName storeCode")
+    .populate("sender", "firstName lastName")
+    .populate("receiver", "firstName lastName")
+    .populate("createdBy", "firstName lastName")
+    .populate("updatedBy", "firstName lastName")
+    .sort({ createdAt: -1 })
+    .lean();
+
+  // Attach dynamic isRead status for the logged-in user
+  notifications = notifications.map((n) => {
+    const readByList = n.readBy || [];
+    const userRead = readByList.some(
+      (id) => id.toString() === userId.toString()
+    );
+    return {
+      ...n,
+      isRead: userRead,
+    };
+  });
+
+  if (isRead !== undefined) {
+    const targetReadStatus = isRead === "true";
+    notifications = notifications.filter(
+      (n) => n.isRead === targetReadStatus
+    );
+  }
+
+  // ============================================================
   // PAGINATION
   // ============================================================
 
+  const total = notifications.length;
   const pageNumber = Math.max(Number(page) || 1, 1);
 
   const limitNumber = Math.min(
@@ -211,27 +233,7 @@ exports.getMyNotifications = asyncHandler(async (req, res) => {
   );
 
   const skip = (pageNumber - 1) * limitNumber;
-
-  // ============================================================
-  // TOTAL
-  // ============================================================
-
-  const total = await Notification.countDocuments(filter);
-
-  // ============================================================
-  // GET NOTIFICATIONS
-  // ============================================================
-
-  const notifications = await Notification.find(filter)
-    .populate("store", "storeName storeCode")
-    .populate("sender", "firstName lastName")
-    .populate("receiver", "firstName lastName")
-    .populate("createdBy", "firstName lastName")
-    .populate("updatedBy", "firstName lastName")
-    .sort({ createdAt: -1 })
-    .skip(skip)
-    .limit(limitNumber)
-    .lean();
+  const paginatedData = notifications.slice(skip, skip + limitNumber);
 
   return success(
     res,
@@ -240,8 +242,8 @@ exports.getMyNotifications = asyncHandler(async (req, res) => {
       total,
       page: pageNumber,
       limit: limitNumber,
-      totalPages: Math.ceil(total / limitNumber),
-      data: notifications,
+      totalPages: Math.ceil(total / limitNumber) || 1,
+      data: paginatedData,
     }
   );
 });
@@ -252,6 +254,7 @@ exports.getMyNotifications = asyncHandler(async (req, res) => {
 // ============================================================
 exports.getMyUnreadCount = asyncHandler(async (req, res) => {
   const userId = req.user?.id;
+  const userStore = req.user?.store;
 
   if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
     return res.status(401).json({
@@ -260,11 +263,16 @@ exports.getMyUnreadCount = asyncHandler(async (req, res) => {
     });
   }
 
-  const unreadCount = await Notification.countDocuments({
-    receiver: userId,
-    isRead: false,
+  const filter = {
     status: true,
-  });
+    readBy: { $ne: userId },
+  };
+
+  if (userStore) {
+    filter.store = userStore;
+  }
+
+  const unreadCount = await Notification.countDocuments(filter);
 
   return success(
     res,
@@ -299,14 +307,14 @@ exports.getNotificationById = asyncHandler(async (req, res) => {
 
   const notification = await Notification.findOne({
     _id: notificationId,
-    receiver: userId,
     status: true,
   })
     .populate("store", "storeName storeCode")
     .populate("sender", "firstName lastName email")
     .populate("receiver", "firstName lastName email")
     .populate("createdBy", "firstName lastName")
-    .populate("updatedBy", "firstName lastName");
+    .populate("updatedBy", "firstName lastName")
+    .lean();
 
   if (!notification) {
     return res.status(404).json({
@@ -315,10 +323,14 @@ exports.getNotificationById = asyncHandler(async (req, res) => {
     });
   }
 
+  const isRead = (notification.readBy || []).some(
+    (id) => id.toString() === userId.toString()
+  );
+
   return success(
     res,
     "Notification details retrieved successfully.",
-    notification
+    { ...notification, isRead }
   );
 });
 
@@ -347,15 +359,11 @@ exports.markAsRead = asyncHandler(async (req, res) => {
   const notification = await Notification.findOneAndUpdate(
     {
       _id: notificationId,
-      receiver: userId,
       status: true,
     },
     {
-      $set: {
-        isRead: true,
-        readAt: new Date(),
-        updatedBy: userId,
-      },
+      $addToSet: { readBy: userId },
+      $set: { updatedBy: userId },
     },
     {
       new: true,
@@ -386,6 +394,7 @@ exports.markAsRead = asyncHandler(async (req, res) => {
 // ============================================================
 exports.markAllAsRead = asyncHandler(async (req, res) => {
   const userId = req.user?.id;
+  const userStore = req.user?.store;
 
   if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
     return res.status(401).json({
@@ -394,20 +403,19 @@ exports.markAllAsRead = asyncHandler(async (req, res) => {
     });
   }
 
-  const result = await Notification.updateMany(
-    {
-      receiver: userId,
-      isRead: false,
-      status: true,
-    },
-    {
-      $set: {
-        isRead: true,
-        readAt: new Date(),
-        updatedBy: userId,
-      },
-    }
-  );
+  const filter = {
+    status: true,
+    readBy: { $ne: userId },
+  };
+
+  if (userStore) {
+    filter.store = userStore;
+  }
+
+  const result = await Notification.updateMany(filter, {
+    $addToSet: { readBy: userId },
+    $set: { updatedBy: userId },
+  });
 
   return success(
     res,
@@ -443,7 +451,6 @@ exports.deleteNotification = asyncHandler(async (req, res) => {
   const notification = await Notification.findOneAndUpdate(
     {
       _id: notificationId,
-      receiver: userId,
       status: true,
     },
     {
@@ -492,20 +499,19 @@ exports.updateNotification = asyncHandler(async (req, res) => {
     });
   }
 
-  // Don't allow changing ownership/audit fields from frontend
   const {
     store,
     sender,
     receiver,
     createdBy,
     updatedBy,
+    readBy,
     ...allowedData
   } = req.body;
 
   const notification = await Notification.findOneAndUpdate(
     {
       _id: notificationId,
-      receiver: userId,
       status: true,
     },
     {
@@ -623,7 +629,7 @@ exports.getAllNotification = asyncHandler(async (req, res) => {
       total,
       page: pageNumber,
       limit: limitNumber,
-      totalPages: Math.ceil(total / limitNumber),
+      totalPages: Math.ceil(total / limitNumber) || 1,
       data: notifications,
     }
   );
