@@ -17,11 +17,10 @@ const schema = new mongoose.Schema(
       required: true,
     },
 
-    // Receiver
+    // Receiver (Optional / Legacy compatibility)
     receiver: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
-      required: true,
       index: true,
     },
 
@@ -81,18 +80,17 @@ const schema = new mongoose.Schema(
         "Expense",
         "Offer",
         "Product",
+        "User",
       ],
     },
 
-    // Read Status
-    isRead: {
-      type: Boolean,
-      default: false,
-    },
-
-    readAt: {
-      type: Date,
-    },
+    // Users who have read this notification
+    readBy: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "User",
+      },
+    ],
 
     // Active / Deleted
     status: {
@@ -118,8 +116,7 @@ const schema = new mongoose.Schema(
 );
 
 // Indexes
-schema.index({ receiver: 1, isRead: 1 });
-schema.index({ store: 1 });
+schema.index({ store: 1, status: 1 });
 schema.index({ createdAt: -1 });
 
 module.exports = mongoose.model("Notification", schema);

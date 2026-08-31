@@ -3,6 +3,7 @@ const response = require("../utils/responseHandler");
 const success = response.success;
 const asyncHandler = require("../utils/asyncHandler");
 const Expense = require("../models/Expense");
+const triggerNotification = require("../utils/notificationHelper");
 
 /* ======================================================
    1. CREATE EXPENSE
@@ -61,6 +62,20 @@ exports.createExpense = asyncHandler(async (req, res) => {
     ...req.body,
     expenseNumber: expenseNumber.trim().toUpperCase(),
     totalAmount,
+    createdBy,
+  });
+
+  // Trigger Automatic Expense Notification
+  await triggerNotification({
+    store: expense.store,
+    sender: createdBy,
+    receiver: createdBy,
+    title: "New Expense Recorded",
+    message: `Expense #${expense.expenseNumber} recorded for ₹${totalAmount}.`,
+    type: "expense",
+    priority: "Medium",
+    referenceId: expense._id,
+    referenceModel: "Expense",
     createdBy,
   });
 
